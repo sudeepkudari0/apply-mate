@@ -22,7 +22,7 @@ Since this is an unpacked Chrome Extension, follow these steps to install it:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/sudeepkudari0/applymate.git
+   git clone https://github.com/sudeepkudari0/apply-mate.git
    cd applymate
    ```
 2. Install dependencies and build the extension:
