@@ -111,7 +111,7 @@ export function parseLLMResponse(response: string): LLMJobExtraction | null {
       employmentType: normalizeString(parsed.employmentType) || undefined,
     };
   } catch (error) {
-    console.error("[CV-Tailor] Failed to parse LLM response:", error);
+    console.error("[ApplyMate] Failed to parse LLM response:", error);
     return null;
   }
 }

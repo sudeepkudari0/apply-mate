@@ -1,8 +1,8 @@
 {
-  "name": "CV-Tailor",
-  "version": "1.0.0",
+  "name": "ApplyMate",
+  "version": "1.1.0",
   "manifest_version": 3,
-  "description": "Tailor your resume and generate cover letters for job applications",
+  "description": "Auto-fill job applications, tailor resumes, and generate human-sounding answers",
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -13,7 +13,8 @@
     "128": "icons/icon16.svg"
   },
   "action": {
-    "default_title": "CV-Tailor",
+    "default_title": "ApplyMate",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.svg",
       "48": "icons/icon16.svg",

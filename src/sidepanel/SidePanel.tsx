@@ -4,11 +4,12 @@ import { createProvider } from "../models/providers/factory";
 import { ProviderConfig } from "../models/providers/types";
 import { ResumeEditor } from "../core/resumeEditor";
 import { CoverLetterGenerator } from "../core/coverLetter";
-import { generateResumePDF } from "../core/pdfGenerator";
+import { generateResumePDF, buildFilename } from "../core/pdfGenerator";
 import { MasterResume, JDAnalysis } from "../core/types";
 import { JobSearchPanel } from "../features/jobSearch";
 import { CompanyManager } from "../features/companies";
 import { MatchScoreCard, calculateMatch, type MatchResult } from "../features/matching";
+import { loadUserProfile, profileToFillData } from "../core/userProfile";
 
 type MainTab = "tailor" | "search" | "companies";
 type ResultTab = "resume" | "cover-letter";
@@ -122,16 +123,20 @@ export function SidePanel() {
     }
   }
 
-  // Fill form on the page
+  // Fill form on the page using full user profile
   async function fillPageForm() {
-    if (!masterResume) {
-      setError("No master resume loaded");
-      return;
-    }
-
     setFillStatus("Filling form...");
 
     try {
+      // Load full user profile
+      const profile = await loadUserProfile();
+      const fillData = profileToFillData(profile);
+
+      // Add cover letter if generated
+      if (coverLetter) {
+        fillData.coverLetter = coverLetter;
+      }
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) throw new Error("No active tab");
 
@@ -148,21 +153,13 @@ export function SidePanel() {
 
       const response = await chrome.tabs.sendMessage(tab.id, {
         type: "FILL_FORM",
-        data: {
-          firstName: masterResume.name.split(" ")[0],
-          lastName: masterResume.name.split(" ").slice(1).join(" "),
-          email: masterResume.email,
-          phone: masterResume.phone,
-          linkedin: masterResume.linkedin,
-          github: masterResume.github,
-          portfolio: masterResume.portfolio,
-          coverLetter: coverLetter,
-        },
+        data: fillData,
       });
 
       if (response.success) {
-        setFillStatus("✓ Form filled!");
-        setTimeout(() => setFillStatus(null), 3000);
+        const { filled, ambiguous } = response.data;
+        setFillStatus(`✓ ${filled} fields filled${ambiguous ? `, ${ambiguous} needs review` : ''}`);
+        setTimeout(() => setFillStatus(null), 5000);
       } else {
         throw new Error(response.error || "Failed to fill form");
       }
@@ -258,7 +255,8 @@ export function SidePanel() {
     if (!resume) return;
 
     try {
-      const filename = `Resume_${company.replace(/\s+/g, "_")}_${jobTitle.replace(/\s+/g, "_")}.pdf`;
+      const name = masterResume?.name || 'Resume';
+      const filename = buildFilename(name);
       await generateResumePDF(resume, filename, masterResume || undefined);
     } catch (err: any) {
       setError(`PDF generation failed: ${err.message}`);
@@ -273,7 +271,7 @@ export function SidePanel() {
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">📝</span>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900">Welcome to CV-Tailor</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Welcome to ApplyMate</h2>
             <p className="text-gray-600 text-sm mt-2">
               Configure your LLM provider and upload your master resume to get started.
             </p>
@@ -298,7 +296,7 @@ export function SidePanel() {
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white text-sm font-bold">CV</span>
             </div>
-            <h1 className="text-lg font-semibold text-gray-900">CV-Tailor</h1>
+            <h1 className="text-lg font-semibold text-gray-900">ApplyMate</h1>
           </div>
           <button
             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"

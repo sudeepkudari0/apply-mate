@@ -1,5 +1,5 @@
 /**
- * Chrome Storage Utilities for CV-Tailor
+ * Chrome Storage Utilities for ApplyMate
  * Centralized storage management for all extension data
  */
 
@@ -70,7 +70,7 @@ export async function loadSavedSearches(): Promise<SavedSearch[]> {
       createdAt: new Date(s.createdAt),
     }));
   } catch (error) {
-    console.error("[CV-Tailor] Failed to load saved searches:", error);
+    console.error("[ApplyMate] Failed to load saved searches:", error);
     return [];
   }
 }
@@ -81,7 +81,7 @@ export async function saveSavedSearches(searches: SavedSearch[]): Promise<void> 
       [STORAGE_KEYS.SAVED_SEARCHES]: searches,
     });
   } catch (error) {
-    console.error("[CV-Tailor] Failed to save searches:", error);
+    console.error("[ApplyMate] Failed to save searches:", error);
   }
 }
 
@@ -97,7 +97,7 @@ export async function loadTargetCompanies(): Promise<TargetCompany[]> {
       addedAt: new Date(c.addedAt),
     }));
   } catch (error) {
-    console.error("[CV-Tailor] Failed to load target companies:", error);
+    console.error("[ApplyMate] Failed to load target companies:", error);
     return [];
   }
 }
@@ -108,7 +108,7 @@ export async function saveTargetCompanies(companies: TargetCompany[]): Promise<v
       [STORAGE_KEYS.TARGET_COMPANIES]: companies,
     });
   } catch (error) {
-    console.error("[CV-Tailor] Failed to save target companies:", error);
+    console.error("[ApplyMate] Failed to save target companies:", error);
   }
 }
 
@@ -152,7 +152,7 @@ export async function loadApplicationHistory(): Promise<ApplicationRecord[]> {
       updatedAt: new Date(a.updatedAt),
     }));
   } catch (error) {
-    console.error("[CV-Tailor] Failed to load application history:", error);
+    console.error("[ApplyMate] Failed to load application history:", error);
     return [];
   }
 }
@@ -163,7 +163,7 @@ export async function saveApplicationHistory(applications: ApplicationRecord[]):
       [STORAGE_KEYS.APPLICATION_HISTORY]: applications,
     });
   } catch (error) {
-    console.error("[CV-Tailor] Failed to save application history:", error);
+    console.error("[ApplyMate] Failed to save application history:", error);
   }
 }
 
@@ -201,7 +201,7 @@ export async function loadSettings(): Promise<UserSettings> {
     const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
     return { ...DEFAULT_SETTINGS, ...result[STORAGE_KEYS.SETTINGS] };
   } catch (error) {
-    console.error("[CV-Tailor] Failed to load settings:", error);
+    console.error("[ApplyMate] Failed to load settings:", error);
     return DEFAULT_SETTINGS;
   }
 }
@@ -213,6 +213,6 @@ export async function saveSettings(settings: Partial<UserSettings>): Promise<voi
       [STORAGE_KEYS.SETTINGS]: { ...current, ...settings },
     });
   } catch (error) {
-    console.error("[CV-Tailor] Failed to save settings:", error);
+    console.error("[ApplyMate] Failed to save settings:", error);
   }
 }

@@ -1,59 +1,75 @@
-# CV-Tailor Chrome Extension
+<div align="center">
+  <h1>ApplyMate</h1>
+  <p><b>Your Intelligent Co-Pilot for Job Applications</b></p>
+  <p>
+    Auto-fill forms, tailor resumes on the fly, and generate human-sounding answers to application questions using LLMs.
+  </p>
+</div>
 
-A Chrome extension for tailoring resumes and generating cover letters for job applications.
+<br />
 
-## Features
+## 🚀 Features
 
-- Multi-provider LLM support: Ollama (local), Groq (free tier), Google Gemini
-- Two-pass ATS-optimized resume rewriting
-- Cover letter generation
-- YAML master resume support
-- Copy/download generated content
+- **🧠 Smart Auto-Fill**: Intelligently maps your profile to job application forms (LinkedIn, Indeed, Workday, Greenhouse, Lever, etc.) using multi-tier fuzzy matching.
+- **📄 AI Resume Tailoring**: Re-writes your resume bullets to highlight experience relevant to the specific job description, then generates a perfectly formatted PDF.
+- **🤖 Human-Sounding Answers**: Detects long-form questions (e.g., "Why do you want to work here?") and uses AI to generate short, natural-sounding answers that incorporate your background and the job description.
+- **🔐 Privacy First**: Your profile data stays securely in your browser's local storage.
+- **🔌 Multi-LLM Support**: Bring your own API key for Gemini, Groq, or use local models via Ollama.
 
-## Development
+## 📦 Installation
 
-### Prerequisites
+Since this is an unpacked Chrome Extension, follow these steps to install it:
 
-- Node.js 18+
-- npm or yarn
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/sudeepkudari0/applymate.git
+   cd applymate
+   ```
+2. Install dependencies and build the extension:
+   ```bash
+   bun install
+   bun run build
+   ```
+3. Open Google Chrome and go to `chrome://extensions/`.
+4. Enable **Developer mode** in the top right corner.
+5. Click **Load unpacked** and select the `dist` folder inside the `applymate` directory.
 
-### Setup
+## 🛠 Usage
 
-```bash
-# Install dependencies
-npm install
+1. **Onboarding**: Click the ApplyMate extension icon for the first time to complete your profile setup (Name, Experience, Education, Skills, and upload a base Resume PDF).
+2. **Apply to Jobs**: Go to any job portal (e.g., LinkedIn Jobs or Workday).
+3. **Auto-Fill**: Click the extension popup and hit **Auto-Fill Form**. The extension will highlight filled fields in green and ambiguous ones in yellow.
+4. **Answer Questions**: Click **AI Answer Questions** to inject "✨ AI Answer" buttons next to any open-ended text areas.
+5. **Tailor Resume**: Open the Side Panel to view the detected Job Description, generate a custom cover letter, or tailor your resume for the specific role.
 
-# Build extension
-npm run build
+## 💻 Tech Stack
 
-# Development mode (watch)
-npm run dev
-```
+- **React & TypeScript**: UI components for Side Panel, Options, Popup, and Onboarding.
+- **Vite**: Fast, optimized bundling.
+- **Tailwind CSS**: Styling.
+- **jsPDF**: Document generation preserving layout and formatting.
+- **LLM Integrations**:
+  - `@google/genai` for Gemini
+  - `openai` wrapper for Groq
+  - `ollama/browser` for local models
 
-### Load Extension
+## 🏗 Architecture
 
-1. Open Chrome → `chrome://extensions`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the `dist` folder
+- **Service Worker (`background/`)**: Manages configurations, user profiles, and orchestrates AI calls.
+- **Content Script (`content/`)**: Reads the DOM, detects fields, performs fuzzy matching, auto-fills inputs, and injects AI answer buttons.
+- **Core Engine (`core/`)**: Handles resume parsing, merging LLM output with original layout, and PDF generation.
 
-## Configuration
+## 🤝 Contributing
 
-1. Click extension icon → Settings (gear icon)
-2. Select LLM provider:
-   - **Groq**: Enter API key from [console.groq.com](https://console.groq.com)
-   - **Ollama**: Ensure Ollama is running locally
-   - **Gemini**: Enter API key from [aistudio.google.com](https://aistudio.google.com/apikey)
-3. Upload your master resume as YAML file
+Contributions, issues, and feature requests are welcome!
+Feel free to check the [issues page](https://github.com/yourusername/applymate/issues).
 
-## Usage
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-1. Click extension icon to open side panel
-2. Enter job title and company name
-3. Paste the job description
-4. Click "Generate Resume & Cover Letter"
-5. Copy or download the generated content
+## 📄 License
 
-## Master Resume Format
-
-See the sample template in Settings for YAML format.
+This project is licensed under the MIT License - see the LICENSE file for details.

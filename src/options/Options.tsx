@@ -84,7 +84,7 @@ export function Options() {
         <div className="text-center mb-8">
           <div className="text-4xl mb-2">📝</div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            CV-Tailor Settings
+            ApplyMate Settings
           </h1>
           <p className="text-slate-400 text-sm mt-1">
             Configure your LLM provider and master resume

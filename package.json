@@ -1,5 +1,5 @@
 {
-  "name": "cv-tailor",
+  "name": "applymate",
   "description": "Chrome extension to tailor resumes and generate cover letters for job applications",
   "version": "1.0.0",
   "type": "module",
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@google/genai": "^0.9.0",
-    "html2pdf.js": "^0.10.2",
     "js-yaml": "^4.1.0",
+    "jspdf": "^4.2.1",
     "ollama": "^0.5.15",
     "openai": "^4.28.0",
     "react": "^18.2.0",

@@ -1,49 +1,73 @@
 /**
  * PDF Generator - Matching exact resume format
  * Features: Left-aligned header, Employment History with subsections,
- * Projects with links and descriptions, proper formatting
+ * Projects with links and descriptions, proper formatting.
+ *
+ * FIX: Now accepts rewritten resume text, parses it back into structure,
+ * and merges with original to preserve formatting while using tailored content.
  */
 
-import { jsPDF } from "jspdf";
-import { MasterResume } from "./types";
+import { jsPDF } from 'jspdf';
+import { MasterResume } from './types';
+import { parseRewrittenResume, mergeRewrittenIntoOriginal } from './resumeParser';
 
 // Colors
 const COLORS = {
   black: [0, 0, 0] as [number, number, number],
-  link: [0, 102, 204] as [number, number, number], // Blue for links
+  link: [0, 102, 204] as [number, number, number],
   gray: [100, 100, 100] as [number, number, number],
 };
 
 /**
- * Generate PDF directly from MasterResume data
- * This ensures projects, links, and all details are preserved
+ * Generate PDF from tailored resume text + original structure.
+ * Parses the LLM-rewritten text and merges it with the original
+ * to preserve URLs, dates, and formatting.
  */
 export async function generateResumePDF(
-  _resumeText: string,
+  resumeText: string,
   filename: string,
   masterResume?: MasterResume
 ): Promise<void> {
   if (!masterResume) {
-    throw new Error("Master resume is required for PDF generation");
+    throw new Error('Master resume is required for PDF generation');
   }
 
-  const doc = createResumePDF(masterResume);
-  doc.save(filename);
+  // Parse the rewritten text and merge with original structure
+  const parsed = parseRewrittenResume(resumeText);
+  const merged = mergeRewrittenIntoOriginal(masterResume, parsed);
+
+  const doc = createResumePDF(merged);
+
+  // Auto-download with proper filename
+  const safeName = filename || buildFilename(masterResume.name);
+  doc.save(safeName);
 }
 
 /**
- * Generate PDF Blob from MasterResume
+ * Generate PDF Blob from tailored resume
  */
 export async function generateResumePDFBlob(
-  _resumeText: string,
+  resumeText: string,
   masterResume?: MasterResume
 ): Promise<Blob> {
   if (!masterResume) {
-    throw new Error("Master resume is required for PDF generation");
+    throw new Error('Master resume is required for PDF generation');
   }
 
-  const doc = createResumePDF(masterResume);
-  return doc.output("blob");
+  const parsed = parseRewrittenResume(resumeText);
+  const merged = mergeRewrittenIntoOriginal(masterResume, parsed);
+
+  const doc = createResumePDF(merged);
+  return doc.output('blob');
+}
+
+/**
+ * Build filename: FirstName_LastName_Tailored_CV.pdf
+ */
+export function buildFilename(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/);
+  const formatted = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join('_');
+  return `${formatted}_Tailored_CV.pdf`;
 }
 
 /**
@@ -51,9 +75,9 @@ export async function generateResumePDFBlob(
  */
 function createResumePDF(resume: MasterResume): jsPDF {
   const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "pt",
-    format: "a4",
+    orientation: 'portrait',
+    unit: 'pt',
+    format: 'a4',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -72,31 +96,31 @@ function createResumePDF(resume: MasterResume): jsPDF {
 
   // ==================== HEADER SECTION ====================
   // Name - Bold, left-aligned
-  doc.setFont("helvetica", "bold");
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(...COLORS.black);
   doc.text(resume.name, margin, y);
   y += 20;
 
   // Contact info - labeled fields, left-aligned
-  doc.setFont("helvetica", "normal");
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
 
   // Portfolio
   if (resume.portfolio) {
     doc.setTextColor(...COLORS.black);
-    doc.text("Portfolio: ", margin, y);
-    const portfolioLabelWidth = doc.getTextWidth("Portfolio: ");
+    doc.text('Portfolio: ', margin, y);
+    const portfolioLabelWidth = doc.getTextWidth('Portfolio: ');
     doc.setTextColor(...COLORS.link);
-    const portfolioUrl = resume.portfolio.startsWith("http") ? resume.portfolio : `https://${resume.portfolio}`;
+    const portfolioUrl = resume.portfolio.startsWith('http') ? resume.portfolio : `https://${resume.portfolio}`;
     doc.textWithLink(resume.portfolio, margin + portfolioLabelWidth, y, { url: portfolioUrl });
     y += 14;
   }
 
   // Email
   doc.setTextColor(...COLORS.black);
-  doc.text("Email: ", margin, y);
-  const emailLabelWidth = doc.getTextWidth("Email: ");
+  doc.text('Email: ', margin, y);
+  const emailLabelWidth = doc.getTextWidth('Email: ');
   doc.setTextColor(...COLORS.link);
   doc.textWithLink(resume.email, margin + emailLabelWidth, y, { url: `mailto:${resume.email}` });
   y += 14;
@@ -104,8 +128,8 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // Phone
   if (resume.phone) {
     doc.setTextColor(...COLORS.black);
-    doc.text("Phone: ", margin, y);
-    const phoneLabelWidth = doc.getTextWidth("Phone: ");
+    doc.text('Phone: ', margin, y);
+    const phoneLabelWidth = doc.getTextWidth('Phone: ');
     doc.text(resume.phone, margin + phoneLabelWidth, y);
     y += 14;
   }
@@ -113,10 +137,10 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // LinkedIn
   if (resume.linkedin) {
     doc.setTextColor(...COLORS.black);
-    doc.text("LinkedIn: ", margin, y);
-    const linkedinLabelWidth = doc.getTextWidth("LinkedIn: ");
+    doc.text('LinkedIn: ', margin, y);
+    const linkedinLabelWidth = doc.getTextWidth('LinkedIn: ');
     doc.setTextColor(...COLORS.link);
-    const linkedinUrl = resume.linkedin.startsWith("http") ? resume.linkedin : `https://${resume.linkedin}`;
+    const linkedinUrl = resume.linkedin.startsWith('http') ? resume.linkedin : `https://${resume.linkedin}`;
     doc.textWithLink(linkedinUrl, margin + linkedinLabelWidth, y, { url: linkedinUrl });
     y += 14;
   }
@@ -126,7 +150,7 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // ==================== SUMMARY/BIO ====================
   if (resume.summary) {
     doc.setTextColor(...COLORS.black);
-    doc.setFont("helvetica", "normal");
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     const summaryLines = doc.splitTextToSize(resume.summary.trim(), contentWidth);
     doc.text(summaryLines, margin, y);
@@ -136,24 +160,24 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // ==================== EMPLOYMENT HISTORY ====================
   checkPageBreak(30);
   y += 4;
-  doc.setFont("helvetica", "bold");
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...COLORS.black);
-  doc.text("Employment History", pageWidth / 2, y, { align: "center" });
+  doc.text('Employment History', pageWidth / 2, y, { align: 'center' });
   y += 16;
 
   for (const exp of resume.experience) {
     checkPageBreak(80);
 
     // Job title and company
-    doc.setFont("helvetica", "bold");
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...COLORS.black);
     doc.text(`${exp.title}, ${exp.company}`, margin, y);
     y += 14;
 
     // Duration line
-    doc.setFont("helvetica", "normal");
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...COLORS.gray);
     doc.text(`Duration: ${exp.dates}`, margin, y);
@@ -161,7 +185,7 @@ function createResumePDF(resume: MasterResume): jsPDF {
 
     // Technologies Used line
     if (exp.technologies && exp.technologies.length > 0) {
-      const techText = `Technologies Used: [Tech Stack: ${exp.technologies.join(", ")}]`;
+      const techText = `Technologies Used: [Tech Stack: ${exp.technologies.join(', ')}]`;
       const techLines = doc.splitTextToSize(techText, contentWidth);
       doc.text(techLines, margin, y);
       y += techLines.length * 11 + 4;
@@ -171,13 +195,13 @@ function createResumePDF(resume: MasterResume): jsPDF {
     if (exp.intern_bullets && exp.intern_bullets.length > 0) {
       // Show as "As Full-Time Developer" subsection
       y += 4;
-      doc.setFont("helvetica", "bold");
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       doc.setTextColor(...COLORS.black);
-      doc.text("•   As Full-Time Developer (June 2024 – Present):", margin, y);
+      doc.text('•   As Full-Time Developer (June 2024 – Present):', margin, y);
       y += 14;
 
-      doc.setFont("helvetica", "normal");
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       for (const bullet of exp.bullets) {
         checkPageBreak(30);
@@ -189,12 +213,12 @@ function createResumePDF(resume: MasterResume): jsPDF {
 
       // Intern bullets
       y += 6;
-      doc.setFont("helvetica", "bold");
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.text("•   As Intern (Feb 2024 – June 2024):", margin, y);
+      doc.text('•   As Intern (Feb 2024 – June 2024):', margin, y);
       y += 14;
 
-      doc.setFont("helvetica", "normal");
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       for (const bullet of exp.intern_bullets) {
         checkPageBreak(30);
@@ -205,7 +229,7 @@ function createResumePDF(resume: MasterResume): jsPDF {
       }
     } else {
       // Regular bullets without subsections
-      doc.setFont("helvetica", "normal");
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(...COLORS.black);
       for (const bullet of exp.bullets) {
@@ -223,10 +247,10 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // ==================== PROJECTS ====================
   checkPageBreak(40);
   y += 4;
-  doc.setFont("helvetica", "bold");
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...COLORS.black);
-  doc.text("Projects", pageWidth / 2, y, { align: "center" });
+  doc.text('Projects', pageWidth / 2, y, { align: 'center' });
   y += 16;
 
   if (resume.projects) {
@@ -234,7 +258,7 @@ function createResumePDF(resume: MasterResume): jsPDF {
       checkPageBreak(50);
 
       // Project name with link
-      doc.setFont("helvetica", "bold");
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       doc.setTextColor(...COLORS.black);
 
@@ -243,17 +267,17 @@ function createResumePDF(resume: MasterResume): jsPDF {
 
       if (project.url) {
         const nameWidth = doc.getTextWidth(projectName);
-        doc.setFont("helvetica", "normal");
-        doc.text(" | ", margin + nameWidth, y);
-        const pipeWidth = doc.getTextWidth(" | ");
+        doc.setFont('helvetica', 'normal');
+        doc.text(' | ', margin + nameWidth, y);
+        const pipeWidth = doc.getTextWidth(' | ');
         doc.setTextColor(...COLORS.link);
-        const projectUrl = project.url.startsWith("http") ? project.url : `https://${project.url}`;
+        const projectUrl = project.url.startsWith('http') ? project.url : `https://${project.url}`;
         doc.textWithLink(project.url, margin + nameWidth + pipeWidth, y, { url: projectUrl });
       }
       y += 14;
 
       // Project bullets/description
-      doc.setFont("helvetica", "normal");
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(...COLORS.black);
 
@@ -278,15 +302,15 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // ==================== SKILLS ====================
   checkPageBreak(40);
   y += 4;
-  doc.setFont("helvetica", "bold");
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...COLORS.black);
-  doc.text("Skills", pageWidth / 2, y, { align: "center" });
+  doc.text('Skills', pageWidth / 2, y, { align: 'center' });
   y += 16;
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  const skillsText = resume.skills.join(", ") + ".";
+  const skillsText = resume.skills.join(', ') + '.';
   const skillLines = doc.splitTextToSize(skillsText, contentWidth);
   doc.text(skillLines, margin, y);
   y += skillLines.length * 12 + 8;
@@ -294,14 +318,14 @@ function createResumePDF(resume: MasterResume): jsPDF {
   // ==================== EDUCATION ====================
   checkPageBreak(50);
   y += 4;
-  doc.setFont("helvetica", "bold");
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...COLORS.black);
-  doc.text("Education", pageWidth / 2, y, { align: "center" });
+  doc.text('Education', pageWidth / 2, y, { align: 'center' });
   y += 16;
 
   for (const edu of resume.education) {
-    doc.setFont("helvetica", "normal");
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(...COLORS.black);
     doc.text(`${edu.degree}, ${edu.school}`, margin, y);

@@ -54,7 +54,7 @@ export function extractSchemaOrgJobPosting(): SchemaJobPosting | null {
 
     return null;
   } catch (error) {
-    console.error("[CV-Tailor] Schema.org extraction error:", error);
+    console.error("[ApplyMate] Schema.org extraction error:", error);
     return null;
   }
 }

@@ -13,6 +13,8 @@ export default defineConfig({
         background: path.resolve(__dirname, "src/background/index.ts"),
         sidepanel: path.resolve(__dirname, "src/sidepanel/index.tsx"),
         options: path.resolve(__dirname, "src/options/index.tsx"),
+        popup: path.resolve(__dirname, "src/popup/index.tsx"),
+        onboarding: path.resolve(__dirname, "src/onboarding/index.tsx"),
         contentScript: path.resolve(__dirname, "src/content/contentScript.ts"),
       },
       output: {
