@@ -11,6 +11,7 @@ interface ParsedSections {
   experiences: ParsedExperience[];
   projects: ParsedProject[];
   skills: string[];
+  categorized_skills: { label: string; items: string }[];
 }
 
 interface ParsedExperience {
@@ -34,6 +35,7 @@ export function parseRewrittenResume(text: string): ParsedSections {
     experiences: [],
     projects: [],
     skills: [],
+    categorized_skills: [],
   };
 
   let currentSection: 'none' | 'summary' | 'experience' | 'projects' | 'skills' | 'education' = 'none';
@@ -141,14 +143,22 @@ export function parseRewrittenResume(text: string): ParsedSections {
       }
 
       case 'skills': {
-        // Skills are usually comma-separated
-        const skillLine = line.replace(/^[-•*]\s+/, '').trim();
+        const skillLine = line.replace(/^[-•*]\s+/, '').replace(/\*\*/g, '').trim();
         if (skillLine) {
-          const skills = skillLine
-            .split(/[,;]/)
-            .map((s) => s.replace(/\.$/, '').trim())
-            .filter((s) => s.length > 0);
-          result.skills.push(...skills);
+          const colonIdx = skillLine.indexOf(':');
+          if (colonIdx !== -1 && colonIdx < 40) {
+            // Looks like a category line e.g., "Frontend: React, Next.js"
+            const label = skillLine.substring(0, colonIdx).trim();
+            const items = skillLine.substring(colonIdx + 1).replace(/\.$/, '').trim();
+            result.categorized_skills.push({ label, items });
+          } else {
+            // Flat skills list
+            const skills = skillLine
+              .split(/[,;]/)
+              .map((s) => s.replace(/\.$/, '').trim())
+              .filter((s) => s.length > 0);
+            result.skills.push(...skills);
+          }
         }
         break;
       }
@@ -262,8 +272,11 @@ export function mergeRewrittenIntoOriginal(
   }
 
   // Update skills if parsed
-  if (parsed.skills.length > 0) {
+  if (parsed.categorized_skills && parsed.categorized_skills.length > 0) {
+    merged.categorized_skills = parsed.categorized_skills;
+  } else if (parsed.skills.length > 0) {
     merged.skills = parsed.skills;
+    merged.categorized_skills = []; // Clear categorized if AI flattened it
   }
 
   return merged;

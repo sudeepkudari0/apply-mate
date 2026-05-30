@@ -599,6 +599,22 @@ export function SidePanel() {
                         {jdAnalysis.keyword_priorities.nice_to_have.join(", ") || "None detected"}
                       </span>
                     </div>
+                    {jdAnalysis.action_verbs?.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-900">Action Verbs: </span>
+                        <span className="text-gray-600">
+                          {jdAnalysis.action_verbs.join(", ")}
+                        </span>
+                      </div>
+                    )}
+                    {jdAnalysis.key_phrases_verbatim?.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-900">Key ATS Phrases: </span>
+                        <span className="text-gray-600">
+                          {jdAnalysis.key_phrases_verbatim.join(" | ")}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </details>
               </div>

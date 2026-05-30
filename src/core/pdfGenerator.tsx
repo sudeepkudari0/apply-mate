@@ -56,13 +56,28 @@ export function buildFilename(fullName: string): string {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 async function buildBlob(resumeText: string, masterResume: MasterResume): Promise<Blob> {
+  console.log('[PDFGenerator] Building PDF blob...');
+  console.log('[PDFGenerator] Input resume text length:', resumeText.length, 'chars');
+  console.log('[PDFGenerator] Input resume text preview:', resumeText.substring(0, 300));
+
   const parsed = parseRewrittenResume(resumeText);
+  console.log('[PDFGenerator] Parsed sections:', {
+    summary: parsed.summary ? parsed.summary.substring(0, 100) + '...' : '(none)',
+    experiences: parsed.experiences.length,
+    projects: parsed.projects.length,
+    skills: parsed.skills.length,
+  });
+
   const merged = mergeRewrittenIntoOriginal(masterResume, parsed);
+  console.log('[PDFGenerator] Merged resume summary:', merged.summary?.substring(0, 100));
+  console.log('[PDFGenerator] Merged experience[0] bullets:', merged.experience[0]?.bullets?.slice(0, 2));
 
   // pdf() renders the react-pdf document tree to a Blob entirely in-memory —
   // no DOM, no canvas, no iframe needed.
   const instance = pdf(<ResumeDocument resume={merged} />);
-  return instance.toBlob();
+  const blob = await instance.toBlob();
+  console.log('[PDFGenerator] ✅ PDF blob generated, size:', blob.size, 'bytes');
+  return blob;
 }
 
 function triggerDownload(blob: Blob, filename: string): void {

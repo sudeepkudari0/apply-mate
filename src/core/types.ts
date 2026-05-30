@@ -55,6 +55,7 @@ export interface JDAnalysis {
   hard_skills: string[];
   soft_skills: string[];
   tools_technologies: string[];
+  action_verbs: string[];
   role_expectations: string[];
   seniority_indicators: string[];
   keyword_priorities: {
@@ -64,6 +65,8 @@ export interface JDAnalysis {
   };
   years_experience: string | null;
   education_requirements: string[];
+  culture_signals: string[];
+  key_phrases_verbatim: string[];
 }
 
 export interface GenerationResult {
