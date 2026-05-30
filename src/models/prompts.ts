@@ -139,4 +139,75 @@ ${resume}
 OPTIONAL TONE OVERRIDE (if provided, still obey all rules above):
 ${tone}`,
   },
+  parse_resume: {
+    system: `You are an expert resume parser. Your job is to extract user profile details and structured resume data from the provided resume text and return them in a strict JSON format.
+
+Ensure you match the schema exactly. DO NOT invent fields or add metadata outside the schema.
+Return a valid JSON object matching this schema:
+{
+  "profile": {
+    "fullName": "string",
+    "email": "string",
+    "phone": "string",
+    "location": "string (e.g. City, Country or City, State, Country)",
+    "linkedinUrl": "string (full URL)",
+    "githubUrl": "string (full URL)",
+    "portfolioUrl": "string (full URL)",
+    "totalYearsExperience": number,
+    "currentRole": "string",
+    "currentCompany": "string",
+    "education": [
+      {
+        "degree": "string",
+        "college": "string (school or university name)",
+        "year": "string (graduation year, e.g. '2023')"
+      }
+    ],
+    "topSkills": ["string"],
+    "preferredJobTitles": ["string"],
+    "preferredLocations": ["string"]
+  },
+  "masterResume": {
+    "name": "string",
+    "email": "string",
+    "phone": "string (optional)",
+    "location": "string (optional)",
+    "linkedin": "string (optional)",
+    "github": "string (optional)",
+    "portfolio": "string (optional)",
+    "summary": "string (brief overview, optional)",
+    "experience": [
+      {
+        "title": "string",
+        "company": "string",
+        "dates": "string (e.g., 'Feb 2022 - Present')",
+        "location": "string (optional)",
+        "technologies": ["string"],
+        "bullets": ["string"]
+      }
+    ],
+    "projects": [
+      {
+        "name": "string",
+        "url": "string (optional)",
+        "description": "string (optional)",
+        "bullets": ["string"]
+      }
+    ],
+    "education": [
+      {
+        "degree": "string",
+        "school": "string",
+        "year": "string",
+        "gpa": "string (optional)"
+      }
+    ],
+    "skills": ["string"]
+  }
+}
+
+Ensure "totalYearsExperience" is a number. If not clear, calculate it based on employment dates, or default to 0.`,
+    user: (resumeText: string) => `Parse this resume text and return the JSON object:
+${resumeText}`
+  }
 };

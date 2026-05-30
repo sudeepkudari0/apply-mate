@@ -7,14 +7,16 @@
     "dev": "node scripts/copy-static.js && vite build --watch",
     "build": "tsc && vite build && node scripts/copy-static.js",
     "copy-static": "node scripts/copy-static.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pack": "zip-build -i dist -o applymate-extension.zip"
   },
   "dependencies": {
     "@google/genai": "^0.9.0",
+    "@react-pdf/renderer": "^4.5.1",
     "js-yaml": "^4.1.0",
-    "jspdf": "^4.2.1",
     "ollama": "^0.5.15",
     "openai": "^4.28.0",
+    "pdfjs-dist": "^5.7.284",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -28,6 +30,7 @@
     "daisyui": "^5.0.27",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "zip-build": "^1.8.0"
   }
 }

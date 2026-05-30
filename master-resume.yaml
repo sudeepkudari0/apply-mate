@@ -6,15 +6,18 @@ linkedin: linkedin.com/in/sudeep-kudari
 portfolio: https://www.sudeepkudari.online
 
 summary: |
-  Full-Stack Software Developer with experience in Java, TypeScript, modern Web Frameworks, and Cloud Platforms. Built end-to-end applications—from Frontend UI to Backend services and Scalable Deployments on AWS.
+  Full-Stack Software Engineer with strong backend and system design expertise. Experienced in
+  building scalable SaaS platforms, designing APIs, and delivering end-to-end applications from UI to
+  distributed backend systems.
 
 experience:
-  - title: Software Developer
+  - title: Software Engineer
     company: ThinkRoman Ventures
     dates: Feb 2024 - Present
     location: Remote
     technologies:
       - TypeScript
+      - Node.js
       - Next.js
       - MongoDB
       - Prisma
@@ -27,25 +30,28 @@ experience:
       - AWS (Lambda, EC2, S3)
       - JUnit
     bullets:
-      - Built and deployed scalable full-stack applications using Next.js, MongoDB, and Prisma ORM for both B2B and B2C use cases. Optimized system performance and user experience.
-      - Designed modular SaaS architectures with multi-tenant and production-grade performance.
-      - Integrated third-party APIs like WhatsApp, Zoom, and payment gateways (Razorpay, PayU, PayPal) for end-to-end feature delivery.
-      - Optimized performance across mobile and desktop platforms with server-side rendering, dynamic routing, and efficient data fetching.
-    intern_bullets:
-      - Contributed to development of internal tools and modules under mentorship.
-      - Gained hands-on experience with API integrations in production-ready applications.
-      - Participated in code reviews, daily stand-ups, and agile development processes.
+      - Designed end-to-end SaaS systems with multi-tenant architecture using Next.js and backend APIs.
+      - Built reusable React component library with TypeScript, improving UI consistency across products.
+      - Managed complex client-side state using Zustand/Redux, handling real-time data updates.
+      - Built backend services with optimized database queries, improving response performance.
+      - Implemented Redis caching and Kafka pipelines for asynchronous processing and scalability.
+      - Designed robust APIs for third-party integrations (Payments, WhatsApp, Zoom) with retry and consistency handling.
+      - Optimized SSR and data-fetching strategies, improving frontend performance across mobile and desktop.
 
 projects:
   - name: OutPost – AI Social Scheduler & Content Generator
     url: https://outpost.sudeepkudari.online
     bullets:
-      - Built a full-stack SaaS platform that enables users to connect multiple social media accounts, auto-generate content using AI (supports OpenAI, Claude, etc.), schedule posts across platforms, and manage multiple brand accounts from a unified dashboard.
+      - Built a full-stack SaaS platform enabling users to connect multiple social media accounts, auto-generate content using AI (OpenAI, Claude, etc.), and manage multiple brand accounts from a unified dashboard.
+      - Designed a distributed scheduling system for automated posts across platforms with queue-based execution and concurrency handling.
+      - Implemented API rate limiting and retry mechanisms for reliable third-party integrations.
 
   - name: Forms Factory – Collaborative Form Builder & Submission
     url: https://forms.sudeepkudari.online
     bullets:
-      - Built a collaborative form platform with dynamic form creation, team invites, real-time submissions, API Keys, Webhooks, Excel export, and role based access for secure workflow.
+      - Designed an interactive form builder UI with drag-and-drop components and live preview.
+      - Implemented RBAC and secure multi-user collaboration with team invites and role-based access.
+      - Built webhook and export pipelines (Excel export) and API key management for workflow integrations.
 
 education:
   - degree: Bachelor of Technology in Information Science
@@ -66,18 +72,21 @@ skills:
   - PostgreSQL
   - Redis
   - Kafka
+  - Aerospike
   - AWS (S3, EC2, Lambda)
   - Git
   - Linux
   - Prisma ORM
   - JUnit
+  - Zustand
+  - Redux
 
 categorized_skills:
   - label: "Frontend"
-    items: "React, Next.js, Typescript, Tailwind CSS, HTML/CSS"
+    items: "React, Next.js, TypeScript, Tailwind CSS, HTML/CSS"
   - label: "Backend"
     items: "Node.js, Spring Boot, Java, Python, Kafka, Redis"
   - label: "Databases"
-    items: "MongoDB, MySQL, PostgreSQL"
+    items: "MongoDB, MySQL, PostgreSQL, Aerospike"
   - label: "Cloud/DevOps"
     items: "AWS (S3, EC2, Lambda), Git, Linux"

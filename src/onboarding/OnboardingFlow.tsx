@@ -1,10 +1,11 @@
 /**
  * Onboarding Flow — Multi-step wizard
- * Collects all user profile data before any auto-apply happens.
- * Steps: Basic Info → Experience → Preferences → Resume Upload
+ * Parses CV first, auto-fills profile details, and allows user verification.
+ * Steps: Upload CV & Parse → Basic Info → Experience → Preferences
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import yaml from 'js-yaml';
 import {
   loadUserProfile,
   saveUserProfile,
@@ -13,20 +14,39 @@ import {
   type UserEducation,
   DEFAULT_PROFILE,
 } from '../core/userProfile';
+import { type ExtensionConfig } from '../background/configManager';
+import { createProvider } from '../models/providers/factory';
+import { PROMPTS } from '../models/prompts';
+import { extractTextFromPdf } from '../core/pdfParser';
 
-type Step = 'basic' | 'experience' | 'preferences' | 'resume';
+type Step = 'resume' | 'basic' | 'experience' | 'preferences';
 
 const STEPS: { key: Step; label: string; icon: string }[] = [
+  { key: 'resume', label: 'Upload CV', icon: '📄' },
   { key: 'basic', label: 'Basic Info', icon: '👤' },
   { key: 'experience', label: 'Experience', icon: '💼' },
   { key: 'preferences', label: 'Preferences', icon: '⚙️' },
-  { key: 'resume', label: 'Resume', icon: '📄' },
 ];
 
 export function OnboardingFlow() {
-  const [currentStep, setCurrentStep] = useState<Step>('basic');
+  const [currentStep, setCurrentStep] = useState<Step>('resume');
   const [profile, setProfile] = useState<UserProfile>({ ...DEFAULT_PROFILE });
+  const [config, setConfig] = useState<ExtensionConfig>({
+    provider: 'gemini',
+    ollamaBaseUrl: 'http://localhost:11434',
+    ollamaModelId: 'qwen3:4b',
+    groqApiKey: '',
+    groqModelId: 'llama-3.3-70b-versatile',
+    geminiApiKey: '',
+    geminiModelId: 'gemini-1.5-flash',
+    masterResumeYaml: '',
+    masterResumeText: '',
+  });
+
   const [saving, setSaving] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [parseSuccess, setParseSuccess] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [importedFromYaml, setImportedFromYaml] = useState(false);
 
@@ -39,26 +59,33 @@ export function OnboardingFlow() {
     const existing = await loadUserProfile();
     if (existing.fullName) {
       setProfile(existing);
-      return;
     }
 
-    // Try to import from YAML master resume
+    // Load existing config
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-      if (response.success && response.data.masterResumeYaml) {
-        const yaml = await import('js-yaml');
-        const parsed = yaml.load(response.data.masterResumeYaml);
-        const prefilled = profileFromMasterResume(parsed);
-        setProfile({ ...DEFAULT_PROFILE, ...prefilled });
-        setImportedFromYaml(true);
+      if (response.success && response.data) {
+        setConfig((prev) => ({ ...prev, ...response.data }));
+        
+        // If they already have a masterResumeYaml, let's prefill
+        if (response.data.masterResumeYaml && !existing.fullName) {
+          const parsed = yaml.load(response.data.masterResumeYaml);
+          const prefilled = profileFromMasterResume(parsed);
+          setProfile((prev) => ({ ...prev, ...prefilled }));
+          setImportedFromYaml(true);
+        }
       }
     } catch {
-      // Ignore — user will fill manually
+      // Ignore
     }
   }
 
   function updateProfile(updates: Partial<UserProfile>) {
     setProfile((prev) => ({ ...prev, ...updates }));
+  }
+
+  function updateConfig(updates: Partial<ExtensionConfig>) {
+    setConfig((prev) => ({ ...prev, ...updates }));
   }
 
   function nextStep() {
@@ -89,6 +116,125 @@ export function OnboardingFlow() {
     }
   }
 
+  async function handleParseCV(file: File | null, rawText: string, useTextMode: boolean) {
+    setParsing(true);
+    setError(null);
+    setParseSuccess(false);
+
+    try {
+      // Validate provider credentials first
+      if (config.provider === 'gemini' && !config.geminiApiKey) {
+        throw new Error('Please enter your Gemini API key');
+      }
+      if (config.provider === 'groq' && !config.groqApiKey) {
+        throw new Error('Please enter your Groq API key');
+      }
+      if (config.provider === 'ollama' && (!config.ollamaBaseUrl || !config.ollamaModelId)) {
+        throw new Error('Please enter your Ollama Base URL and Model ID');
+      }
+
+      let textToParse = '';
+
+      if (useTextMode) {
+        if (!rawText.trim()) {
+          throw new Error('Please paste your resume text');
+        }
+        textToParse = rawText;
+      } else {
+        if (!file) {
+          throw new Error('Please upload a PDF file');
+        }
+        setLoadingStatus('Extracting text from PDF...');
+        const arrayBuffer = await file.arrayBuffer();
+        textToParse = await extractTextFromPdf(arrayBuffer);
+      }
+
+      setLoadingStatus('Connecting to AI model...');
+      const providerConfig = {
+        provider: config.provider,
+        apiKey: config.provider === 'gemini' ? config.geminiApiKey : config.groqApiKey,
+        modelId: config.provider === 'gemini' ? config.geminiModelId : config.groqModelId,
+        baseUrl: config.ollamaBaseUrl,
+      };
+
+      const providerInstance = await createProvider(providerConfig);
+      
+      setLoadingStatus('Analyzing and parsing CV with AI...');
+      const prompt = PROMPTS.parse_resume.user(textToParse);
+      const system = PROMPTS.parse_resume.system;
+
+      const response = await providerInstance.generate(prompt, {
+        systemPrompt: system,
+        temperature: 0.1,
+        forceJson: true,
+      });
+
+      setLoadingStatus('Formatting parsed profile...');
+      let cleanContent = response.content.trim();
+      if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+      }
+      
+      const parsedData = JSON.parse(cleanContent);
+      
+      // Update local profile state
+      const parsedProfile = parsedData.profile || {};
+      const updatedProfile = {
+        ...profile,
+        ...parsedProfile,
+        ...(file && !useTextMode && {
+          resumeFileName: file.name,
+        }),
+      };
+
+      // Read PDF to base64 if uploaded
+      if (file && !useTextMode) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve((e.target?.result as string).split(',')[1]);
+          reader.onerror = () => reject(new Error('Failed to read PDF file'));
+          reader.readAsDataURL(file);
+        });
+        updatedProfile.resumePdfBase64 = base64;
+      }
+
+      setProfile(updatedProfile);
+
+      // Serialize masterResume structure to YAML
+      const masterResumeData = parsedData.masterResume || {};
+      const yamlStr = yaml.dump(masterResumeData);
+      
+      // Save settings to ExtensionConfig
+      const updatedConfig = {
+        ...config,
+        masterResumeYaml: yamlStr,
+        masterResumeText: textToParse,
+      };
+      
+      setConfig(updatedConfig);
+      
+      // Save profile and config to storage
+      await saveUserProfile(updatedProfile);
+      await chrome.runtime.sendMessage({ type: 'SAVE_CONFIG', data: updatedConfig });
+
+      setParseSuccess(true);
+      setImportedFromYaml(true);
+      setError(null);
+      
+      // Automatically advance to the next step after a short delay
+      setTimeout(() => {
+        setCurrentStep('basic');
+      }, 1500);
+
+    } catch (err: any) {
+      console.error('[Onboarding] Parse error:', err);
+      setError(err.message || 'Failed to parse resume. Please check your API key/settings and try again.');
+    } finally {
+      setParsing(false);
+      setLoadingStatus('');
+    }
+  }
+
   const currentStepIndex = STEPS.findIndex((s) => s.key === currentStep);
   const isLastStep = currentStepIndex === STEPS.length - 1;
 
@@ -97,15 +243,15 @@ export function OnboardingFlow() {
       <div style={styles.card}>
         {/* Header */}
         <div style={styles.header}>
-          <div style={styles.logo}>📝</div>
+          <div style={styles.logo}>✨</div>
           <h1 style={styles.title}>ApplyMate Setup</h1>
-          <p style={styles.subtitle}>Let's collect your details for auto-filling job applications</p>
+          <p style={styles.subtitle}>Get started by uploading your CV to auto-fill your application details</p>
         </div>
 
         {/* Import notice */}
         {importedFromYaml && currentStep === 'basic' && (
           <div style={styles.notice}>
-            ✨ Pre-filled from your YAML resume. Please review and update.
+            ✨ Pre-filled from your parsed CV. Please review and verify the details.
           </div>
         )}
 
@@ -128,6 +274,18 @@ export function OnboardingFlow() {
 
         {/* Step Content */}
         <div style={styles.stepContent}>
+          {currentStep === 'resume' && (
+            <ResumeUploadAndParseStep
+              profile={profile}
+              config={config}
+              onChange={updateProfile}
+              onConfigChange={updateConfig}
+              onParse={handleParseCV}
+              parsing={parsing}
+              parseSuccess={parseSuccess}
+              loadingStatus={loadingStatus}
+            />
+          )}
           {currentStep === 'basic' && (
             <BasicInfoStep profile={profile} onChange={updateProfile} />
           )}
@@ -136,9 +294,6 @@ export function OnboardingFlow() {
           )}
           {currentStep === 'preferences' && (
             <PreferencesStep profile={profile} onChange={updateProfile} />
-          )}
-          {currentStep === 'resume' && (
-            <ResumeUploadStep profile={profile} onChange={updateProfile} />
           )}
         </div>
 
@@ -150,25 +305,38 @@ export function OnboardingFlow() {
           <button
             style={{ ...styles.btn, ...styles.btnSecondary }}
             onClick={prevStep}
-            disabled={currentStepIndex === 0}
+            disabled={currentStepIndex === 0 || parsing}
           >
             ← Back
           </button>
-          {isLastStep ? (
+          
+          {currentStep === 'resume' && (
             <button
-              style={{ ...styles.btn, ...styles.btnPrimary }}
-              onClick={handleFinish}
-              disabled={saving}
+              style={{ ...styles.btn, ...styles.btnSecondary }}
+              onClick={() => setCurrentStep('basic')}
+              disabled={parsing}
             >
-              {saving ? 'Saving...' : '✅ Finish Setup'}
+              Skip & Fill Manually →
             </button>
-          ) : (
-            <button
-              style={{ ...styles.btn, ...styles.btnPrimary }}
-              onClick={nextStep}
-            >
-              Next →
-            </button>
+          )}
+
+          {currentStep !== 'resume' && (
+            isLastStep ? (
+              <button
+                style={{ ...styles.btn, ...styles.btnPrimary }}
+                onClick={handleFinish}
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : '✅ Finish Setup'}
+              </button>
+            ) : (
+              <button
+                style={{ ...styles.btn, ...styles.btnPrimary }}
+                onClick={nextStep}
+              >
+                Next →
+              </button>
+            )
           )}
         </div>
       </div>
@@ -176,7 +344,263 @@ export function OnboardingFlow() {
   );
 }
 
-// ============ Step Components ============
+// ============ Onboarding Step Components ============
+
+interface ResumeUploadAndParseProps {
+  profile: UserProfile;
+  config: ExtensionConfig;
+  onChange: (u: Partial<UserProfile>) => void;
+  onConfigChange: (c: Partial<ExtensionConfig>) => void;
+  onParse: (file: File | null, rawText: string, useTextMode: boolean) => Promise<void>;
+  parsing: boolean;
+  parseSuccess: boolean;
+  loadingStatus: string;
+}
+
+function ResumeUploadAndParseStep({
+  profile,
+  config,
+  onConfigChange,
+  onParse,
+  parsing,
+  parseSuccess,
+  loadingStatus,
+}: ResumeUploadAndParseProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [rawText, setRawText] = useState('');
+  const [useTextMode, setUseTextMode] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    setLocalError(null);
+
+    if (!selectedFile.type.includes('pdf')) {
+      setLocalError('Please upload a PDF file');
+      return;
+    }
+
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      setLocalError('File too large. Maximum size is 5MB.');
+      return;
+    }
+
+    setFile(selectedFile);
+  }
+
+  function handleStartParse() {
+    onParse(file, rawText, useTextMode);
+  }
+
+  return (
+    <div style={styles.fields}>
+      {/* AI Provider Config Section */}
+      <div style={styles.sectionTitle}>🤖 Step 1: Configure AI Provider</div>
+      <p style={{ ...styles.hint, color: '#94a3b8', fontSize: '12px', margin: '0 0 10px 0' }}>
+        Select your AI model provider and enter your API credentials. This will be used to parse your CV and tailor your job applications.
+      </p>
+
+      {/* Provider Selector */}
+      <div style={styles.providerGrid}>
+        {(['gemini', 'groq', 'ollama'] as const).map((p) => {
+          const active = config.provider === p;
+          const info = {
+            gemini: { icon: '✨', label: 'Gemini', desc: 'Google AI (Free/Fast)' },
+            groq: { icon: '⚡', label: 'Groq', desc: 'Fast & Free APIs' },
+            ollama: { icon: '🦙', label: 'Ollama', desc: 'Local LLM' },
+          }[p];
+
+          return (
+            <div
+              key={p}
+              style={{
+                ...styles.providerCard,
+                ...(active ? styles.providerCardActive : {}),
+              }}
+              onClick={() => onConfigChange({ provider: p })}
+            >
+              <span style={styles.providerIcon}>{info.icon}</span>
+              <div style={styles.providerName}>{info.label}</div>
+              <div style={styles.providerDesc}>{info.desc}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Provider Settings Fields */}
+      <div style={styles.providerConfigFields}>
+        {config.provider === 'gemini' && (
+          <div style={styles.fieldGroup}>
+            <div style={styles.inputWithLink}>
+              <label style={styles.label}>Gemini API Key</label>
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={styles.helperLink}>
+                Get Key ↗
+              </a>
+            </div>
+            <input
+              style={styles.input}
+              type="password"
+              value={config.geminiApiKey}
+              onChange={(e) => onConfigChange({ geminiApiKey: e.target.value })}
+              placeholder="Paste AIzaSy... API Key"
+            />
+          </div>
+        )}
+
+        {config.provider === 'groq' && (
+          <div style={styles.fieldGroup}>
+            <div style={styles.inputWithLink}>
+              <label style={styles.label}>Groq API Key</label>
+              <a href="https://console.groq.com" target="_blank" rel="noreferrer" style={styles.helperLink}>
+                Get Key ↗
+              </a>
+            </div>
+            <input
+              style={styles.input}
+              type="password"
+              value={config.groqApiKey}
+              onChange={(e) => onConfigChange({ groqApiKey: e.target.value })}
+              placeholder="Paste gsk_... API Key"
+            />
+          </div>
+        )}
+
+        {config.provider === 'ollama' && (
+          <div style={styles.row}>
+            <div style={{ ...styles.fieldGroup, flex: 2 }}>
+              <label style={styles.label}>Ollama URL</label>
+              <input
+                style={styles.input}
+                value={config.ollamaBaseUrl}
+                onChange={(e) => onConfigChange({ ollamaBaseUrl: e.target.value })}
+                placeholder="http://localhost:11434"
+              />
+            </div>
+            <div style={{ ...styles.fieldGroup, flex: 1.5 }}>
+              <label style={styles.label}>Model ID</label>
+              <input
+                style={styles.input}
+                value={config.ollamaModelId}
+                onChange={(e) => onConfigChange({ ollamaModelId: e.target.value })}
+                placeholder="qwen3:4b"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CV Data Section */}
+      <div style={{ ...styles.sectionTitle, marginTop: '16px' }}>📄 Step 2: Provide your CV</div>
+
+      {/* Tab select between PDF upload and Text Paste */}
+      <div style={styles.tabHeader}>
+        <button
+          style={{
+            ...styles.tabBtn,
+            ...(!useTextMode ? styles.tabBtnActive : {}),
+          }}
+          onClick={() => setUseTextMode(false)}
+        >
+          📁 Upload PDF
+        </button>
+        <button
+          style={{
+            ...styles.tabBtn,
+            ...(useTextMode ? styles.tabBtnActive : {}),
+          }}
+          onClick={() => setUseTextMode(true)}
+        >
+          ✍️ Paste Text
+        </button>
+      </div>
+
+      {/* PDF Upload Mode */}
+      {!useTextMode && (
+        <div style={styles.fieldGroup}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          <div
+            style={{
+              ...styles.dropzone,
+              ...(file ? styles.dropzoneActive : {}),
+            }}
+            onClick={() => fileRef.current?.click()}
+          >
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📄</div>
+            {file ? (
+              <div>
+                <span style={{ fontWeight: 600, color: '#86efac' }}>{file.name}</span>
+                <p style={styles.hint}>{Math.round(file.size / 1024)} KB • Click to replace</p>
+              </div>
+            ) : (
+              <div>
+                <span style={{ fontWeight: 500, color: '#cbd5e1' }}>Click to choose your CV (PDF)</span>
+                <p style={styles.hint}>Supported size: up to 5MB</p>
+              </div>
+            )}
+          </div>
+          {localError && <div style={styles.error}>{localError}</div>}
+        </div>
+      )}
+
+      {/* Plain Text Mode */}
+      {useTextMode && (
+        <div style={styles.fieldGroup}>
+          <textarea
+            style={{ ...styles.input, height: '140px', fontFamily: 'monospace', fontSize: '12px' }}
+            value={rawText}
+            onChange={(e) => setRawText(e.target.value)}
+            placeholder="Paste your complete resume text here (copy and paste from your PDF)..."
+          />
+        </div>
+      )}
+
+      {/* Parse Trigger Button */}
+      <button
+        style={{
+          ...styles.btn,
+          ...styles.btnPrimary,
+          marginTop: '12px',
+          padding: '14px',
+          fontSize: '15px',
+          fontWeight: 600,
+          boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
+        }}
+        onClick={handleStartParse}
+        disabled={parsing || parseSuccess || (!file && !useTextMode) || (useTextMode && !rawText.trim())}
+      >
+        {parsing ? (
+          <span style={styles.spinnerWrapper}>
+            <span style={styles.spinner}></span>
+            {loadingStatus || 'Parsing CV...'}
+          </span>
+        ) : parseSuccess ? (
+          '✅ CV Parsed! Redirecting...'
+        ) : (
+          '✨ Save Config & Parse CV'
+        )}
+      </button>
+
+      {/* Parse success details snapshot */}
+      {profile.fullName && parseSuccess && (
+        <div style={styles.successBadge}>
+          <strong>Successfully auto-filled:</strong>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: '#cbd5e1' }}>
+            👤 Name: {profile.fullName} | ✉️ Email: {profile.email} | 🎓 Education: {profile.education[0]?.degree || 'None'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function BasicInfoStep({
   profile,
@@ -239,28 +663,26 @@ function BasicInfoStep({
           />
         </div>
         <div style={styles.fieldGroup}>
-          <label style={styles.label}>GitHub / Portfolio URL</label>
+          <label style={styles.label}>GitHub URL</label>
           <input
             style={styles.input}
             type="url"
-            value={profile.githubUrl || profile.portfolioUrl}
+            value={profile.githubUrl}
             onChange={(e) => onChange({ githubUrl: e.target.value })}
             placeholder="https://github.com/..."
           />
         </div>
       </div>
-      {!profile.portfolioUrl && profile.githubUrl && (
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Portfolio URL (if different from GitHub)</label>
-          <input
-            style={styles.input}
-            type="url"
-            value={profile.portfolioUrl}
-            onChange={(e) => onChange({ portfolioUrl: e.target.value })}
-            placeholder="https://yoursite.com"
-          />
-        </div>
-      )}
+      <div style={styles.fieldGroup}>
+        <label style={styles.label}>Portfolio URL</label>
+        <input
+          style={styles.input}
+          type="url"
+          value={profile.portfolioUrl}
+          onChange={(e) => onChange({ portfolioUrl: e.target.value })}
+          placeholder="https://yoursite.com"
+        />
+      </div>
     </div>
   );
 }
@@ -476,94 +898,7 @@ function PreferencesStep({
   );
 }
 
-function ResumeUploadStep({
-  profile,
-  onChange,
-}: {
-  profile: UserProfile;
-  onChange: (u: Partial<UserProfile>) => void;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadError(null);
-
-    if (!file.type.includes('pdf')) {
-      setUploadError('Please upload a PDF file');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('File too large. Maximum size is 5MB.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = (event.target?.result as string).split(',')[1];
-      onChange({
-        resumePdfBase64: base64,
-        resumeFileName: file.name,
-      });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  return (
-    <div style={styles.fields}>
-      <div style={styles.fieldGroup}>
-        <label style={styles.label}>Upload your Resume (PDF)</label>
-        <p style={styles.hint}>
-          This will be stored locally and used for auto-uploading to job portals.
-          Max 5MB.
-        </p>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".pdf"
-          style={{ display: 'none' }}
-          onChange={handleFileUpload}
-        />
-
-        <button
-          style={{ ...styles.btn, ...styles.btnSecondary, marginTop: '8px' }}
-          onClick={() => fileRef.current?.click()}
-        >
-          📁 Choose PDF File
-        </button>
-
-        {profile.resumeFileName && (
-          <div style={styles.fileInfo}>
-            ✅ {profile.resumeFileName} uploaded
-            ({Math.round((profile.resumePdfBase64.length * 0.75) / 1024)}KB)
-          </div>
-        )}
-
-        {uploadError && <div style={styles.error}>{uploadError}</div>}
-      </div>
-
-      {/* Summary */}
-      <div style={styles.sectionTitle}>📋 Profile Summary</div>
-      <div style={styles.summary}>
-        <div><strong>Name:</strong> {profile.fullName || '—'}</div>
-        <div><strong>Email:</strong> {profile.email || '—'}</div>
-        <div><strong>Phone:</strong> {profile.phone || '—'}</div>
-        <div><strong>Location:</strong> {profile.location || '—'}</div>
-        <div><strong>Role:</strong> {profile.currentRole || '—'} at {profile.currentCompany || '—'}</div>
-        <div><strong>Experience:</strong> {profile.totalYearsExperience} years</div>
-        <div><strong>Skills:</strong> {profile.topSkills.join(', ') || '—'}</div>
-        <div><strong>Resume:</strong> {profile.resumeFileName || 'Not uploaded'}</div>
-      </div>
-    </div>
-  );
-}
-
-// ============ Styles ============
+// ============ Premium Styles ============
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -703,26 +1038,120 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 12px',
     color: '#fca5a5',
     fontSize: '13px',
-    marginBottom: '12px',
+    marginTop: '4px',
   },
-  fileInfo: {
-    marginTop: '8px',
-    padding: '8px 12px',
-    background: 'rgba(34, 197, 94, 0.1)',
-    border: '1px solid rgba(34, 197, 94, 0.3)',
+  successBadge: {
+    marginTop: '12px',
+    padding: '12px',
+    background: 'rgba(34, 197, 94, 0.15)',
+    border: '1px solid rgba(34, 197, 94, 0.4)',
     borderRadius: '8px',
     color: '#86efac',
     fontSize: '13px',
+    boxShadow: '0 2px 10px rgba(34, 197, 94, 0.1)',
   },
-  summary: {
+  providerGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '12px',
+    margin: '8px 0',
+  },
+  providerCard: {
     background: '#0f172a',
     border: '1px solid #334155',
-    borderRadius: '8px',
-    padding: '14px',
-    fontSize: '13px',
-    color: '#94a3b8',
+    borderRadius: '10px',
+    padding: '12px 8px',
+    textAlign: 'center' as const,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  providerCardActive: {
+    borderColor: '#6366f1',
+    background: 'rgba(99, 102, 241, 0.1)',
+    boxShadow: '0 0 10px rgba(99, 102, 241, 0.15)',
+  },
+  providerIcon: {
+    fontSize: '20px',
+    marginBottom: '4px',
+    display: 'block',
+  },
+  providerName: {
+    fontSize: '12px',
+    fontWeight: 600,
+    color: '#cbd5e1',
+  },
+  providerDesc: {
+    fontSize: '9px',
+    color: '#64748b',
+    marginTop: '2px',
+  },
+  providerConfigFields: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '6px',
+    gap: '10px',
+    marginTop: '6px',
+  },
+  inputWithLink: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  helperLink: {
+    color: '#60a5fa',
+    textDecoration: 'none',
+    fontSize: '12px',
+    fontWeight: 500,
+  },
+  tabHeader: {
+    display: 'flex',
+    background: '#0f172a',
+    borderRadius: '8px',
+    padding: '3px',
+    margin: '8px 0',
+    border: '1px solid #334155',
+  },
+  tabBtn: {
+    flex: 1,
+    padding: '8px',
+    border: 'none',
+    background: 'none',
+    color: '#94a3b8',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    borderRadius: '6px',
+    transition: 'all 0.2s',
+  },
+  tabBtnActive: {
+    background: '#1e293b',
+    color: '#ffffff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+  },
+  dropzone: {
+    border: '2px dashed #475569',
+    borderRadius: '12px',
+    padding: '24px',
+    textAlign: 'center' as const,
+    cursor: 'pointer',
+    background: '#0f172a',
+    transition: 'all 0.2s',
+  },
+  dropzoneActive: {
+    borderColor: '#22c55e',
+    background: 'rgba(34, 197, 94, 0.05)',
+  },
+  spinnerWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+  },
+  spinner: {
+    width: '16px',
+    height: '16px',
+    border: '2px solid rgba(255,255,255,0.3)',
+    borderTopColor: '#ffffff',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
   },
 };
