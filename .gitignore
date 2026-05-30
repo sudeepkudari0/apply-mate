@@ -34,3 +34,5 @@ dist-ssr/
 # Vite / React specific
 coverage/
 *.tsbuildinfo
+
+applymate-extension.zip
