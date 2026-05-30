@@ -3,6 +3,11 @@
  * Data structures for resume and job information
  */
 
+export interface SkillCategory {
+  label: string;
+  items: string;
+}
+
 export interface MasterResume {
   name: string;
   email: string;
@@ -17,6 +22,7 @@ export interface MasterResume {
   experience: Experience[];
   education: Education[];
   skills: string[];
+  categorized_skills?: SkillCategory[];
   certifications?: string[];
   projects?: Project[];
 }

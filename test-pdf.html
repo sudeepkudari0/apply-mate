@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Resume PDF Generator — Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #f0f0f0;
+      padding: 12px 0;
+    }
+    .controls button {
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #btn-pdf {
+      background: #2563eb;
+      color: #fff;
+    }
+    #btn-pdf:hover { background: #1d4ed8; }
+    #btn-preview {
+      background: #059669;
+      color: #fff;
+    }
+    #btn-preview:hover { background: #047857; }
+    .status {
+      font-size: 13px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .page-wrapper {
+      background: white;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<h2 style="margin: 0 0 4px; color: #333;">📄 Resume PDF Test Generator</h2>
+<p class="status" id="status">Preview below. Click "Generate PDF" to download.</p>
+
+<div class="controls">
+  <button id="btn-pdf" onclick="generatePDF()">⬇️ Generate PDF</button>
+  <button id="btn-preview" onclick="location.reload()">🔄 Refresh Preview</button>
+</div>
+
+<!-- ========== RESUME TEMPLATE — exact copy of pdfGenerator.ts template ========== -->
+<div class="page-wrapper">
+<div id="resume-root" style="
+  width: 595px;
+  padding: 40px 48px;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  background: #fff;
+  box-sizing: border-box;
+  line-height: 1.35;
+">
+  <style>
+    #resume-root * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Header */
+    .name { font-size: 16px; font-weight: bold; margin-bottom: 2px; }
+    .contact-row { font-size: 10.5px; line-height: 1.6; }
+    .contact-label { font-weight: bold; }
+    .link { color: #0563C1; text-decoration: underline; }
+    .pipe-sep { font-weight: normal; color: #000; }
+
+    /* Summary */
+    .summary { font-size: 10.5px; margin-top: 6px; margin-bottom: 4px; line-height: 1.4; }
+
+    /* Section headers */
+    .section-header {
+      text-align: center;
+      font-size: 14px;
+      font-weight: bold;
+      color: #C6A300;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+
+    /* Experience */
+    .exp-entry { margin-bottom: 4px; }
+    .exp-title { font-size: 10.5px; font-weight: bold; margin-bottom: 1px; }
+    .exp-dates { font-size: 9.5px; color: #444; margin-bottom: 1px; }
+    .tech-line { font-size: 9.5px; color: #444; margin-bottom: 2px; line-height: 1.35; }
+
+    /* Subsection headers (Full-Time / Intern) */
+    .subsection-header {
+      font-size: 10.5px;
+      font-weight: bold;
+      margin: 3px 0 1px 12px;
+    }
+
+    /* Bullet lists */
+    .bullet-list {
+      list-style: none;
+      margin: 1px 0 2px 18px;
+      padding: 0;
+    }
+    .bullet-list.indented {
+      margin-left: 36px;
+    }
+    .bullet-list li {
+      font-size: 10px;
+      line-height: 1.35;
+      margin-bottom: 1.5px;
+      padding-left: 14px;
+      position: relative;
+    }
+    .bullet-list li::before {
+      content: "–";
+      position: absolute;
+      left: 0;
+    }
+
+    /* Projects */
+    .proj-entry { margin-bottom: 3px; }
+    .proj-title { font-size: 10.5px; margin-bottom: 1px; }
+    .proj-title a { font-size: 10px; }
+
+    /* Skills */
+    .skill-row { font-size: 10.5px; line-height: 1.55; }
+
+    /* Education */
+    .edu-entry { margin-bottom: 2px; }
+    .edu-title { font-size: 10.5px; }
+    .edu-details { font-size: 9.5px; margin-top: 0; }
+  </style>
+
+  <!-- ===== MOCK DATA — from master-resume.yaml ===== -->
+
+  <div class="name">Sudeep Kudari</div>
+
+  <div class="contact-row">
+    <div><span class="contact-label">Portfolio:</span> <a href="https://www.sudeepkudari.online" class="link">https://www.sudeepkudari.online</a></div>
+    <div><span class="contact-label">Email:</span> <a href="mailto:sudeepkudari0@gmail.com" class="link">sudeepkudari0@gmail.com</a></div>
+    <div><span class="contact-label">Phone: +91 8618078136</span></div>
+    <div><span class="contact-label">LinkedIn:</span>  <a href="https://www.linkedin.com/in/sudeep-kudari" class="link">https://www.linkedin.com/in/sudeep-kudari</a></div>
+  </div>
+
+  <div class="summary">Full-Stack Software Engineer with strong backend and system design expertise. Experienced in building scalable SaaS platforms, designing APIs, and delivering end-to-end applications from UI to distributed backend systems.</div>
+
+  <!-- Employment History -->
+  <div class="section-header">Employment History</div>
+
+  <div class="exp-entry">
+    <div class="exp-title"><b>Software Engineer, ThinkRoman Ventures</b></div>
+    <div class="exp-dates">Duration: [Feb 2024] — Present</div>
+    <div class="tech-line">Technologies Used: [Tech Stack: TypeScript, Node.js, MongoDB, Next.js, Prisma, Redis, Java, Spring Boot, MySQL, Kafka, Aerospike, AWS (Lambda, EC2, S3), JUnit]</div>
+
+    <div class="subsection-header">-&nbsp;&nbsp;&nbsp;As Full-Time Developer (Feb 2024 – Present):</div>
+    <ul class="bullet-list indented">
+      <li>Designed end-to-end Saas systems with multi-tenant architecture using Next.js and backend APIs.</li>
+      <li>Built reusable React component library with Typescript, improving UI consistency.</li>
+      <li>Managed complex client-side state using Zustand/Redux, handling real time data updates.</li>
+      <li>Built backend services with optimized database queries, improving response performance.</li>
+      <li>Implemented Redis caching and kafka pipelines for asynchronous processing and scalability.</li>
+      <li>Designed robust APIs for third-party integrations (Payments, WhatsApp, Zoom) with retry and consistency handling.</li>
+      <li>Optimized SSR and data-fetching strategies, improving frontend performance.</li>
+    </ul>
+  </div>
+
+  <!-- Projects -->
+  <div class="section-header">Projects</div>
+
+  <div class="proj-entry">
+    <div class="proj-title"><b>OutPost – AI Social Scheduler &amp; Content Generator</b> <span style="font-weight:normal;color:#000;">|</span> <a href="https://outpost.sudeepkudari.online" class="link">https://outpost.sudeepkudari.online</a></div>
+    <ul class="bullet-list">
+      <li>Built distributed scheduling system for automated posts across platforms.</li>
+      <li>Designed queue-based execution and concurrency handling.</li>
+      <li>Implemented API rate limiting and retry mechanisms</li>
+    </ul>
+  </div>
+
+  <div class="proj-entry">
+    <div class="proj-title"><b>Forms Factory – Collaborative Form Builder &amp; Submission</b> <span style="font-weight:normal;color:#000;">|</span> <a href="https://forms.sudeepkudari.online" class="link">https://forms.sudeepkudari.online</a></div>
+    <ul class="bullet-list">
+      <li>Designed an interactive form builder UI with drag and drop components and live preview.</li>
+      <li>Implemented RBAC and secure multi-user systems.</li>
+      <li>Built webhook and export pipelines</li>
+    </ul>
+  </div>
+
+  <!-- Skills -->
+  <div class="section-header">Skills</div>
+  <div class="skill-row"><b>Frontend</b>: React, Next.js, Typescript, Tailwind CSS, HTML/CSS</div>
+  <div class="skill-row"><b>Backend</b>: Node.js, Spring Boot, Java, Python, Kafka, Redis</div>
+  <div class="skill-row"><b>Databases</b>: MongoDB, MySQL, PostgreSQL</div>
+  <div class="skill-row"><b>Cloud/DevOps</b>: AWS (S3, EC2, Lambda), Git, Linux</div>
+
+  <!-- Education -->
+  <div class="section-header">Education</div>
+  <div class="edu-entry">
+    <div class="edu-title"><b>Bachelor of Technology in Information Science, New Horizon College of Engineering, Bangalore</b></div>
+    <div class="edu-details">(June 2019 — August 2023) | CGPA - 7.6</div>
+  </div>
+</div>
+</div>
+
+<script>
+  async function generatePDF() {
+    const statusEl = document.getElementById('status');
+    const btn = document.getElementById('btn-pdf');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating...';
+    statusEl.textContent = 'Capturing resume...';
+
+    try {
+      const resumeRoot = document.getElementById('resume-root');
+
+      // Capture at 2x for crisp text
+      const canvas = await html2canvas(resumeRoot, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width: 595,
+      });
+
+      statusEl.textContent = 'Building PDF...';
+
+      // A4 dimensions in pt: 595.28 x 841.89
+      const PDF_W = 595.28;
+      const PDF_H = 841.89;
+      const { jsPDF } = window.jspdf;
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: 'a4',
+      });
+
+      const imgW = PDF_W;
+      const imgH = (canvas.height / canvas.width) * imgW;
+
+      if (imgH <= PDF_H) {
+        // Single page
+        doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgW, imgH, undefined, 'FAST');
+      } else {
+        // Multi-page slicing
+        const pageCanvasH = (PDF_H / imgW) * canvas.width;
+        const totalPages = Math.ceil(canvas.height / pageCanvasH);
+
+        for (let p = 0; p < totalPages; p++) {
+          if (p > 0) doc.addPage();
+          const srcY = p * pageCanvasH;
+          const srcH = Math.min(pageCanvasH, canvas.height - srcY);
+          const dstH = (srcH / canvas.width) * imgW;
+
+          const slice = document.createElement('canvas');
+          slice.width = canvas.width;
+          slice.height = srcH;
+          const ctx = slice.getContext('2d');
+          ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+          doc.addImage(slice.toDataURL('image/png'), 'PNG', 0, 0, imgW, dstH, undefined, 'FAST');
+        }
+      }
+
+      doc.save('Sudeep_Kudari_Test_CV.pdf');
+      statusEl.textContent = '✅ PDF downloaded! Check your Downloads folder.';
+    } catch (err) {
+      statusEl.textContent = '❌ Error: ' + err.message;
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⬇️ Generate PDF';
+    }
+  }
+</script>
+
+</body>
+</html>

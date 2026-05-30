@@ -71,3 +71,13 @@ skills:
   - Linux
   - Prisma ORM
   - JUnit
+
+categorized_skills:
+  - label: "Frontend"
+    items: "React, Next.js, Typescript, Tailwind CSS, HTML/CSS"
+  - label: "Backend"
+    items: "Node.js, Spring Boot, Java, Python, Kafka, Redis"
+  - label: "Databases"
+    items: "MongoDB, MySQL, PostgreSQL"
+  - label: "Cloud/DevOps"
+    items: "AWS (S3, EC2, Lambda), Git, Linux"

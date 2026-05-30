@@ -1,27 +1,22 @@
 /**
- * PDF Generator - Matching exact resume format
- * Features: Left-aligned header, Employment History with subsections,
- * Projects with links and descriptions, proper formatting.
+ * PDF Generator — HTML Template → html2canvas → jsPDF
  *
- * FIX: Now accepts rewritten resume text, parses it back into structure,
- * and merges with original to preserve formatting while using tailored content.
+ * Instead of drawing each element programmatically with jsPDF APIs,
+ * we build a complete HTML+CSS template matching the original resume,
+ * render it into a hidden DOM container, capture it with html2canvas
+ * at high DPI, and embed the result in a jsPDF document.
+ *
+ * This approach gives pixel-perfect control over fonts, colors,
+ * spacing, and layout — exactly matching the original resume.
  */
 
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { MasterResume } from './types';
 import { parseRewrittenResume, mergeRewrittenIntoOriginal } from './resumeParser';
 
-// Colors
-const COLORS = {
-  black: [0, 0, 0] as [number, number, number],
-  link: [0, 102, 204] as [number, number, number],
-  gray: [100, 100, 100] as [number, number, number],
-};
-
 /**
  * Generate PDF from tailored resume text + original structure.
- * Parses the LLM-rewritten text and merges it with the original
- * to preserve URLs, dates, and formatting.
  */
 export async function generateResumePDF(
   resumeText: string,
@@ -32,13 +27,10 @@ export async function generateResumePDF(
     throw new Error('Master resume is required for PDF generation');
   }
 
-  // Parse the rewritten text and merge with original structure
   const parsed = parseRewrittenResume(resumeText);
   const merged = mergeRewrittenIntoOriginal(masterResume, parsed);
 
-  const doc = createResumePDF(merged);
-
-  // Auto-download with proper filename
+  const doc = await createResumePDFFromHTML(merged);
   const safeName = filename || buildFilename(masterResume.name);
   doc.save(safeName);
 }
@@ -57,7 +49,7 @@ export async function generateResumePDFBlob(
   const parsed = parseRewrittenResume(resumeText);
   const merged = mergeRewrittenIntoOriginal(masterResume, parsed);
 
-  const doc = createResumePDF(merged);
+  const doc = await createResumePDFFromHTML(merged);
   return doc.output('blob');
 }
 
@@ -70,276 +62,364 @@ export function buildFilename(fullName: string): string {
   return `${formatted}_Tailored_CV.pdf`;
 }
 
-/**
- * Create the actual PDF document
- */
-function createResumePDF(resume: MasterResume): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'pt',
-    format: 'a4',
-  });
+// ===================== HTML Template Builder =====================
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 50;
-  const contentWidth = pageWidth - margin * 2;
-  let y = margin;
+function buildResumeHTML(resume: MasterResume): string {
+  const linkedinUrl = resume.linkedin
+    ? resume.linkedin.startsWith('http')
+      ? resume.linkedin
+      : `https://www.linkedin.com/in/${resume.linkedin.replace('linkedin.com/in/', '')}`
+    : '';
 
-  // Helper to check page overflow
-  const checkPageBreak = (neededSpace: number) => {
-    if (y + neededSpace > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-    }
-  };
+  const portfolioUrl = resume.portfolio
+    ? resume.portfolio.startsWith('http')
+      ? resume.portfolio
+      : `https://${resume.portfolio}`
+    : '';
 
-  // ==================== HEADER SECTION ====================
-  // Name - Bold, left-aligned
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(...COLORS.black);
-  doc.text(resume.name, margin, y);
-  y += 20;
-
-  // Contact info - labeled fields, left-aligned
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-
-  // Portfolio
-  if (resume.portfolio) {
-    doc.setTextColor(...COLORS.black);
-    doc.text('Portfolio: ', margin, y);
-    const portfolioLabelWidth = doc.getTextWidth('Portfolio: ');
-    doc.setTextColor(...COLORS.link);
-    const portfolioUrl = resume.portfolio.startsWith('http') ? resume.portfolio : `https://${resume.portfolio}`;
-    doc.textWithLink(resume.portfolio, margin + portfolioLabelWidth, y, { url: portfolioUrl });
-    y += 14;
-  }
-
-  // Email
-  doc.setTextColor(...COLORS.black);
-  doc.text('Email: ', margin, y);
-  const emailLabelWidth = doc.getTextWidth('Email: ');
-  doc.setTextColor(...COLORS.link);
-  doc.textWithLink(resume.email, margin + emailLabelWidth, y, { url: `mailto:${resume.email}` });
-  y += 14;
-
-  // Phone
-  if (resume.phone) {
-    doc.setTextColor(...COLORS.black);
-    doc.text('Phone: ', margin, y);
-    const phoneLabelWidth = doc.getTextWidth('Phone: ');
-    doc.text(resume.phone, margin + phoneLabelWidth, y);
-    y += 14;
-  }
-
-  // LinkedIn
-  if (resume.linkedin) {
-    doc.setTextColor(...COLORS.black);
-    doc.text('LinkedIn: ', margin, y);
-    const linkedinLabelWidth = doc.getTextWidth('LinkedIn: ');
-    doc.setTextColor(...COLORS.link);
-    const linkedinUrl = resume.linkedin.startsWith('http') ? resume.linkedin : `https://${resume.linkedin}`;
-    doc.textWithLink(linkedinUrl, margin + linkedinLabelWidth, y, { url: linkedinUrl });
-    y += 14;
-  }
-
-  y += 6;
-
-  // ==================== SUMMARY/BIO ====================
-  if (resume.summary) {
-    doc.setTextColor(...COLORS.black);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const summaryLines = doc.splitTextToSize(resume.summary.trim(), contentWidth);
-    doc.text(summaryLines, margin, y);
-    y += summaryLines.length * 12 + 8;
-  }
-
-  // ==================== EMPLOYMENT HISTORY ====================
-  checkPageBreak(30);
-  y += 4;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...COLORS.black);
-  doc.text('Employment History', pageWidth / 2, y, { align: 'center' });
-  y += 16;
-
+  // Build Experience HTML
+  let experienceHTML = '';
   for (const exp of resume.experience) {
-    checkPageBreak(80);
+    const techLine = exp.technologies?.length
+      ? `<div class="tech-line">Technologies Used: [Tech Stack: ${exp.technologies.join(', ')}]</div>`
+      : '';
 
-    // Job title and company
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(...COLORS.black);
-    doc.text(`${exp.title}, ${exp.company}`, margin, y);
-    y += 14;
-
-    // Duration line
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...COLORS.gray);
-    doc.text(`Duration: ${exp.dates}`, margin, y);
-    y += 12;
-
-    // Technologies Used line
-    if (exp.technologies && exp.technologies.length > 0) {
-      const techText = `Technologies Used: [Tech Stack: ${exp.technologies.join(', ')}]`;
-      const techLines = doc.splitTextToSize(techText, contentWidth);
-      doc.text(techLines, margin, y);
-      y += techLines.length * 11 + 4;
-    }
-
-    // Full-Time bullets (if intern_bullets exist, show as subsection)
+    let bulletsHTML = '';
     if (exp.intern_bullets && exp.intern_bullets.length > 0) {
-      // Show as "As Full-Time Developer" subsection
-      y += 4;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(...COLORS.black);
-      doc.text('•   As Full-Time Developer (June 2024 – Present):', margin, y);
-      y += 14;
+      // Parse dates dynamically — original format: "Feb 2024 - Present"
+      const dateParts = exp.dates.split(/[-–—]/);
+      const startDate = dateParts[0]?.trim() || 'Feb 2024';
+      const endDate = dateParts[1]?.trim() || 'Present';
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      for (const bullet of exp.bullets) {
-        checkPageBreak(30);
-        const bulletText = `-      ${bullet}`;
-        const bulletLines = doc.splitTextToSize(bulletText, contentWidth - 30);
-        doc.text(bulletLines, margin + 20, y);
-        y += bulletLines.length * 11 + 2;
+      // Subsection format — Full-Time + Intern
+      bulletsHTML += `<div class="subsection-header">-&nbsp;&nbsp;&nbsp;As Full-Time Developer (${startDate} – ${endDate}):</div>`;
+      bulletsHTML += '<ul class="bullet-list indented">';
+      for (const b of exp.bullets) {
+        bulletsHTML += `<li>${escapeHTML(b)}</li>`;
       }
-
-      // Intern bullets
-      y += 6;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.text('•   As Intern (Feb 2024 – June 2024):', margin, y);
-      y += 14;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      for (const bullet of exp.intern_bullets) {
-        checkPageBreak(30);
-        const bulletText = `-      ${bullet}`;
-        const bulletLines = doc.splitTextToSize(bulletText, contentWidth - 30);
-        doc.text(bulletLines, margin + 20, y);
-        y += bulletLines.length * 11 + 2;
+      bulletsHTML += '</ul>';
+      bulletsHTML += `<div class="subsection-header">-&nbsp;&nbsp;&nbsp;As Intern (${startDate} – June 2024):</div>`;
+      bulletsHTML += '<ul class="bullet-list indented">';
+      for (const b of exp.intern_bullets) {
+        bulletsHTML += `<li>${escapeHTML(b)}</li>`;
       }
+      bulletsHTML += '</ul>';
     } else {
-      // Regular bullets without subsections
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...COLORS.black);
-      for (const bullet of exp.bullets) {
-        checkPageBreak(30);
-        const bulletText = `-      ${bullet}`;
-        const bulletLines = doc.splitTextToSize(bulletText, contentWidth - 15);
-        doc.text(bulletLines, margin + 10, y);
-        y += bulletLines.length * 11 + 2;
+      bulletsHTML += '<ul class="bullet-list">';
+      for (const b of exp.bullets) {
+        bulletsHTML += `<li>${escapeHTML(b)}</li>`;
       }
+      bulletsHTML += '</ul>';
     }
 
-    y += 8;
+    experienceHTML += `
+      <div class="exp-entry">
+        <div class="exp-title"><b>${escapeHTML(exp.title)}, ${escapeHTML(exp.company)}</b></div>
+        <div class="exp-dates">Duration: ${escapeHTML(exp.dates)}</div>
+        ${techLine}
+        ${bulletsHTML}
+      </div>`;
   }
 
-  // ==================== PROJECTS ====================
-  checkPageBreak(40);
-  y += 4;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...COLORS.black);
-  doc.text('Projects', pageWidth / 2, y, { align: 'center' });
-  y += 16;
-
+  // Build Projects HTML
+  let projectsHTML = '';
   if (resume.projects) {
-    for (const project of resume.projects) {
-      checkPageBreak(50);
+    for (const proj of resume.projects) {
+      const url = proj.url
+        ? proj.url.startsWith('http') ? proj.url : `https://${proj.url}`
+        : '';
+      const linkPart = url
+        ? `<span class="pipe-sep"> | </span><a href="${url}" class="link">${escapeHTML(url)}</a>`
+        : '';
 
-      // Project name with link
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(...COLORS.black);
-
-      const projectName = project.name;
-      doc.text(projectName, margin, y);
-
-      if (project.url) {
-        const nameWidth = doc.getTextWidth(projectName);
-        doc.setFont('helvetica', 'normal');
-        doc.text(' | ', margin + nameWidth, y);
-        const pipeWidth = doc.getTextWidth(' | ');
-        doc.setTextColor(...COLORS.link);
-        const projectUrl = project.url.startsWith('http') ? project.url : `https://${project.url}`;
-        doc.textWithLink(project.url, margin + nameWidth + pipeWidth, y, { url: projectUrl });
-      }
-      y += 14;
-
-      // Project bullets/description
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...COLORS.black);
-
-      if (project.bullets && project.bullets.length > 0) {
-        for (const bullet of project.bullets) {
-          checkPageBreak(25);
-          const bulletText = `-      ${bullet}`;
-          const bulletLines = doc.splitTextToSize(bulletText, contentWidth - 15);
-          doc.text(bulletLines, margin + 10, y);
-          y += bulletLines.length * 11 + 2;
+      let projBullets = '';
+      if (proj.bullets && proj.bullets.length > 0) {
+        projBullets += '<ul class="bullet-list">';
+        for (const b of proj.bullets) {
+          projBullets += `<li>${escapeHTML(b)}</li>`;
         }
-      } else if (project.description) {
-        const descLines = doc.splitTextToSize(`-      ${project.description}`, contentWidth - 15);
-        doc.text(descLines, margin + 10, y);
-        y += descLines.length * 11 + 2;
+        projBullets += '</ul>';
+      } else if (proj.description) {
+        projBullets += '<ul class="bullet-list">';
+        projBullets += `<li>${escapeHTML(proj.description)}</li>`;
+        projBullets += '</ul>';
       }
 
-      y += 6;
+      projectsHTML += `
+        <div class="proj-entry">
+          <div class="proj-title"><b>${escapeHTML(proj.name)}</b>${linkPart}</div>
+          ${projBullets}
+        </div>`;
     }
   }
 
-  // ==================== SKILLS ====================
-  checkPageBreak(40);
-  y += 4;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...COLORS.black);
-  doc.text('Skills', pageWidth / 2, y, { align: 'center' });
-  y += 16;
+  // Build Skills HTML
+  let skillsHTML = '';
+  if (resume.categorized_skills && resume.categorized_skills.length > 0) {
+    for (const cat of resume.categorized_skills) {
+      skillsHTML += `<div class="skill-row"><b>${escapeHTML(cat.label)}</b>: ${escapeHTML(cat.items)}</div>`;
+    }
+  } else {
+    skillsHTML = `<div class="skill-row">${escapeHTML(resume.skills.join(', '))}</div>`;
+  }
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  const skillsText = resume.skills.join(', ') + '.';
-  const skillLines = doc.splitTextToSize(skillsText, contentWidth);
-  doc.text(skillLines, margin, y);
-  y += skillLines.length * 12 + 8;
-
-  // ==================== EDUCATION ====================
-  checkPageBreak(50);
-  y += 4;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...COLORS.black);
-  doc.text('Education', pageWidth / 2, y, { align: 'center' });
-  y += 16;
-
+  // Build Education HTML
+  let educationHTML = '';
   for (const edu of resume.education) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...COLORS.black);
-    doc.text(`${edu.degree}, ${edu.school}`, margin, y);
-    y += 12;
-
-    doc.setFontSize(9);
-    doc.setTextColor(...COLORS.gray);
-    let eduDetails = `(${edu.year})`;
-    if (edu.gpa) {
-      eduDetails += ` | CGPA - ${edu.gpa}`;
-    }
-    doc.text(eduDetails, margin, y);
-    y += 14;
+    let details = `(${escapeHTML(edu.year)})`;
+    if (edu.gpa) details += ` | CGPA - ${escapeHTML(edu.gpa)}`;
+    educationHTML += `
+      <div class="edu-entry">
+        <div class="edu-title"><b>${escapeHTML(edu.degree)}, ${escapeHTML(edu.school)}</b></div>
+        <div class="edu-details">${details}</div>
+      </div>`;
   }
 
-  return doc;
+  // Assemble the full HTML with inline CSS
+  return `
+<div id="resume-root" style="
+  width: 595px;
+  padding: 40px 48px;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  background: #fff;
+  box-sizing: border-box;
+  line-height: 1.35;
+">
+  <style>
+    #resume-root * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Header */
+    .name { font-size: 16px; font-weight: bold; margin-bottom: 2px; }
+    .contact-row { font-size: 10.5px; line-height: 1.6; }
+    .contact-label { font-weight: bold; }
+    .link { color: #0563C1; text-decoration: underline; }
+    .pipe-sep { font-weight: normal; color: #000; }
+
+    /* Summary */
+    .summary { font-size: 10.5px; margin-top: 6px; margin-bottom: 4px; line-height: 1.4; }
+
+    /* Section headers — centered, teal/dark-cyan like original */
+    .section-header {
+      text-align: center;
+      font-size: 14px;
+      font-weight: bold;
+      color: #C6A300;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+
+    /* Experience */
+    .exp-entry { margin-bottom: 4px; }
+    .exp-title { font-size: 10.5px; font-weight: bold; margin-bottom: 1px; }
+    .exp-dates { font-size: 9.5px; color: #444; margin-bottom: 1px; }
+    .tech-line { font-size: 9.5px; color: #444; margin-bottom: 2px; line-height: 1.35; }
+
+    /* Subsection headers (Full-Time / Intern) */
+    .subsection-header {
+      font-size: 10.5px;
+      font-weight: bold;
+      margin: 3px 0 1px 12px;
+    }
+
+    /* Bullet lists */
+    .bullet-list {
+      list-style: none;
+      margin: 1px 0 2px 18px;
+      padding: 0;
+    }
+    .bullet-list.indented {
+      margin-left: 36px;
+    }
+    .bullet-list li {
+      font-size: 10px;
+      line-height: 1.35;
+      margin-bottom: 1.5px;
+      padding-left: 14px;
+      position: relative;
+    }
+    .bullet-list li::before {
+      content: "–";
+      position: absolute;
+      left: 0;
+    }
+
+    /* Projects */
+    .proj-entry { margin-bottom: 3px; }
+    .proj-title { font-size: 10.5px; margin-bottom: 1px; }
+    .proj-title a { font-size: 10px; }
+
+    /* Skills */
+    .skill-row { font-size: 10.5px; line-height: 1.55; }
+
+    /* Education */
+    .edu-entry { margin-bottom: 2px; }
+    .edu-title { font-size: 10.5px; }
+    .edu-details { font-size: 9.5px; margin-top: 0; }
+  </style>
+
+  <!-- Name -->
+  <div class="name">${escapeHTML(resume.name)}</div>
+
+  <!-- Contact Info -->
+  <div class="contact-row">
+    ${resume.portfolio ? `<div><span class="contact-label">Portfolio:</span> <a href="${portfolioUrl}" class="link">${escapeHTML(portfolioUrl)}</a></div>` : ''}
+    <div><span class="contact-label">Email:</span> <a href="mailto:${escapeHTML(resume.email)}" class="link">${escapeHTML(resume.email)}</a></div>
+    ${resume.phone ? `<div><span class="contact-label">Phone: ${escapeHTML(resume.phone)}</span></div>` : ''}
+    ${linkedinUrl ? `<div><span class="contact-label">LinkedIn:</span>  <a href="${linkedinUrl}" class="link">${escapeHTML(linkedinUrl)}</a></div>` : ''}
+  </div>
+
+  <!-- Summary -->
+  ${resume.summary ? `<div class="summary">${escapeHTML(resume.summary.trim())}</div>` : ''}
+
+  <!-- Employment History -->
+  <div class="section-header">Employment History</div>
+  ${experienceHTML}
+
+  <!-- Projects -->
+  <div class="section-header">Projects</div>
+  ${projectsHTML}
+
+  <!-- Skills -->
+  <div class="section-header">Skills</div>
+  ${skillsHTML}
+
+  <!-- Education -->
+  <div class="section-header">Education</div>
+  ${educationHTML}
+</div>`;
 }
+
+function escapeHTML(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ===================== HTML → Canvas → PDF Pipeline =====================
+
+async function createResumePDFFromHTML(resume: MasterResume): Promise<jsPDF> {
+  const html = buildResumeHTML(resume);
+
+  // Use an iframe for complete CSS isolation.
+  // html2canvas cannot parse Tailwind v4's oklch() colors, so we must
+  // render in a clean document context free of any parent-page styles.
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = `
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    width: 595px;
+    height: 900px;
+    border: none;
+    visibility: hidden;
+  `;
+  document.body.appendChild(iframe);
+
+  try {
+    // Wait for iframe to be ready
+    await new Promise<void>((resolve) => {
+      iframe.onload = () => resolve();
+      // Write a minimal clean document — no external stylesheets
+      const iframeDoc = iframe.contentDocument!;
+      iframeDoc.open();
+      iframeDoc.write(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  html, body { margin: 0; padding: 0; background: #fff; }
+</style></head><body>${html}</body></html>`);
+      iframeDoc.close();
+    });
+
+    const iframeDoc = iframe.contentDocument!;
+    const resumeRoot = iframeDoc.getElementById('resume-root') as HTMLElement;
+
+    if (!resumeRoot) {
+      throw new Error('Resume template failed to render in iframe');
+    }
+
+    // Resize iframe to fit full content (so html2canvas captures everything)
+    const contentHeight = resumeRoot.scrollHeight + 20;
+    iframe.style.height = `${contentHeight}px`;
+
+    // Small delay to ensure layout is settled
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Capture with html2canvas at 2x for crisp text
+    // We pass the iframe's window context so html2canvas uses the clean document
+    const canvas = await html2canvas(resumeRoot, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      width: 595,
+      windowWidth: 595,
+    });
+
+    // A4 dimensions in pt: 595.28 x 841.89
+    const PDF_WIDTH_PT = 595.28;
+    const PDF_HEIGHT_PT = 841.89;
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    // Calculate how to fit the canvas into A4 pages
+    const imgWidth = PDF_WIDTH_PT;
+    const imgHeight = (canvas.height / canvas.width) * imgWidth;
+
+    if (imgHeight <= PDF_HEIGHT_PT) {
+      // Single page — fits entirely
+      doc.addImage(
+        canvas.toDataURL('image/png'),
+        'PNG',
+        0, 0,
+        imgWidth, imgHeight,
+        undefined,
+        'FAST'
+      );
+    } else {
+      // Multi-page — slice the canvas
+      const pageCanvasHeight = (PDF_HEIGHT_PT / imgWidth) * canvas.width;
+      const totalPages = Math.ceil(canvas.height / pageCanvasHeight);
+
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) doc.addPage();
+
+        const sourceY = page * pageCanvasHeight;
+        const sourceH = Math.min(pageCanvasHeight, canvas.height - sourceY);
+        const destH = (sourceH / canvas.width) * imgWidth;
+
+        // Create a slice canvas for this page
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sourceH;
+        const ctx = pageCanvas.getContext('2d')!;
+        ctx.drawImage(
+          canvas,
+          0, sourceY,        // source x, y
+          canvas.width, sourceH, // source w, h
+          0, 0,              // dest x, y
+          canvas.width, sourceH  // dest w, h
+        );
+
+        doc.addImage(
+          pageCanvas.toDataURL('image/png'),
+          'PNG',
+          0, 0,
+          imgWidth, destH,
+          undefined,
+          'FAST'
+        );
+      }
+    }
+
+    return doc;
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
+
