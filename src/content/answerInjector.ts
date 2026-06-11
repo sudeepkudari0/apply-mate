@@ -67,8 +67,16 @@ export function injectAnswerButtons(
             finalAnswer = answer.slice(0, question.maxLength - 3) + '...';
           }
 
-          // Fill the textarea
-          await fillTextarea(question.element, finalAnswer);
+          // Fill the textarea or contenteditable
+          if (question.element instanceof HTMLTextAreaElement) {
+            await fillTextarea(question.element, finalAnswer);
+          } else {
+            // ContentEditable element
+            question.element.focus();
+            question.element.innerText = finalAnswer;
+            question.element.dispatchEvent(new Event('input', { bubbles: true }));
+            question.element.dispatchEvent(new Event('change', { bubbles: true }));
+          }
 
           btn.innerHTML = '✅ Done';
           statusSpan.textContent = `${finalAnswer.length} chars`;

@@ -8,7 +8,7 @@
  * - Field highlighting
  */
 
-import { detectAllFields } from './fieldDetector';
+import { detectAllFields, detectFieldsWithRetry } from './fieldDetector';
 import { matchFieldsToProfile } from './fuzzyMatcher';
 import { fillMatchedFields } from './autoFiller';
 import { highlightFields, clearHighlights } from './fieldHighlighter';
@@ -57,9 +57,13 @@ async function handleMessage(message: Message, sendResponse: (response: any) => 
         const profileData: Record<string, string> = message.data;
         console.log('[ApplyMate] Auto-filling form with profile data...');
 
-        // Detect all fields
-        const fields = detectAllFields();
-        console.log('[ApplyMate] Detected', fields.length, 'form fields');
+        // First pass: detect fields (with retry for dynamic forms)
+        const fields = await detectFieldsWithRetry(3000, 300);
+        const fieldTypeCounts = fields.reduce((acc, f) => {
+          acc[f.type] = (acc[f.type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log('[ApplyMate] Detected', fields.length, 'form fields:', fieldTypeCounts);
 
         // Match fields to profile data
         const mappings = matchFieldsToProfile(fields, profileData);
@@ -67,7 +71,28 @@ async function handleMessage(message: Message, sendResponse: (response: any) => 
 
         // Fill matched fields
         const fillResult = await fillMatchedFields(mappings, profileData);
-        console.log('[ApplyMate] Fill result:', fillResult);
+        console.log('[ApplyMate] First pass result:', fillResult);
+
+        // Second pass: re-detect after fill (some forms reveal new fields)
+        await new Promise((r) => setTimeout(r, 500));
+        const fieldsPass2 = detectAllFields();
+        const newFields = fieldsPass2.filter(
+          (f) => !fields.some((orig) => orig.element === f.element)
+        );
+
+        if (newFields.length > 0) {
+          console.log('[ApplyMate] Second pass: found', newFields.length, 'new fields');
+          const mappings2 = matchFieldsToProfile(newFields, profileData);
+          const fillResult2 = await fillMatchedFields(mappings2, profileData);
+          fillResult.filled += fillResult2.filled;
+          fillResult.skipped += fillResult2.skipped;
+          fillResult.ambiguous += fillResult2.ambiguous;
+          fillResult.details.push(...fillResult2.details);
+          mappings.push(...mappings2);
+          fields.push(...newFields);
+        }
+
+        console.log('[ApplyMate] Final fill result:', fillResult);
 
         // Highlight fields
         highlightFields(fillResult, mappings, fields);

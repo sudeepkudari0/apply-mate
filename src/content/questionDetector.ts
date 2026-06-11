@@ -1,11 +1,11 @@
 /**
- * Question Detector
+ * Question Detector — Enhanced
  * Detects long-form question fields on job application pages.
- * Distinguishes between data fields (name, email) and open-ended questions.
+ * Now supports Shadow DOM, contenteditable, and more question patterns.
  */
 
 export interface DetectedQuestion {
-  element: HTMLTextAreaElement;
+  element: HTMLTextAreaElement | HTMLElement;
   questionText: string;
   minLength?: number;
   maxLength?: number;
@@ -36,11 +36,22 @@ const QUESTION_PATTERNS = [
   /career\s+(?:goals|aspirations|objective)/i,
   /additional\s+(?:information|comments|notes)/i,
   /anything\s+(?:else|you'd\s+like)/i,
+  // Additional patterns for modern ATS
+  /provide\s+(?:an?\s+example|details|more\s+info)/i,
+  /walk\s+us\s+through/i,
+  /please\s+(?:describe|explain|elaborate|share)/i,
+  /in\s+\d+\s+words/i,
+  /cover\s+letter/i,
+  /write\s+a\s+brief/i,
+  /what\s+(?:excites|inspires|drives)\s+you/i,
+  /how\s+(?:will|can|would)\s+you\s+(?:add|bring)\s+value/i,
+  /do\s+you\s+have\s+any\s+(?:questions|comments)/i,
+  /diversity|inclusion|equity/i,
+  /give\s+(?:an?\s+example|us\s+an?\s+example)/i,
 ];
 
 // Labels that indicate this is a DATA field, not a question
 const DATA_FIELD_PATTERNS = [
-  /^cover\s*letter$/i,
   /^address$/i,
   /^street/i,
   /^notes?$/i,
@@ -48,43 +59,57 @@ const DATA_FIELD_PATTERNS = [
   /^comment$/i,
   /^summary$/i,
   /^bio$/i,
-  /^description$/i,
   /^skills?$/i,
 ];
 
 /**
- * Detect long-form question fields on the page
+ * Detect long-form question fields on the page (including Shadow DOM)
  */
 export function detectQuestionFields(): DetectedQuestion[] {
   const questions: DetectedQuestion[] = [];
-  const textareas = document.querySelectorAll<HTMLTextAreaElement>('textarea');
+  const seen = new WeakSet<HTMLElement>();
 
+  // Scan main document
+  scanForQuestions(document, questions, seen);
+
+  // Scan shadow roots
+  const allElements = document.querySelectorAll('*');
+  for (const el of allElements) {
+    if (el.shadowRoot) {
+      scanForQuestions(el.shadowRoot, questions, seen);
+    }
+  }
+
+  return questions;
+}
+
+function scanForQuestions(
+  root: Document | ShadowRoot,
+  questions: DetectedQuestion[],
+  seen: WeakSet<HTMLElement>
+): void {
+  // Textareas
+  const textareas = root.querySelectorAll<HTMLTextAreaElement>('textarea');
   for (const textarea of textareas) {
-    // Must be visible
+    if (seen.has(textarea)) continue;
     if (!isVisibleElement(textarea)) continue;
+    seen.add(textarea);
 
-    // Must have reasonable size (not a tiny notes field)
     const rows = parseInt(textarea.getAttribute('rows') || '0', 10);
     const computedHeight = parseInt(getComputedStyle(textarea).height, 10);
     if (rows < 2 && computedHeight < 60) continue;
 
-    // Get the question text from label/nearby elements
-    const questionText = getQuestionText(textarea);
+    const questionText = getQuestionText(textarea, root);
     if (!questionText) continue;
 
-    // Check if this looks like a question (not a data field)
     const isDataField = DATA_FIELD_PATTERNS.some((p) => p.test(questionText));
     if (isDataField) continue;
 
     const isQuestion = QUESTION_PATTERNS.some((p) => p.test(questionText));
-    // If it doesn't match patterns but is a large textarea with a label, include it
     if (!isQuestion && rows < 4 && computedHeight < 100) continue;
 
-    // Get character limits
     const maxLength = textarea.maxLength > 0 ? textarea.maxLength : undefined;
     const minLength = textarea.minLength > 0 ? textarea.minLength : undefined;
-
-    // Also check for character counter nearby
     const charLimit = findCharacterLimit(textarea);
 
     questions.push({
@@ -96,53 +121,84 @@ export function detectQuestionFields(): DetectedQuestion[] {
     });
   }
 
-  return questions;
+  // ContentEditable divs that look like question fields
+  const editables = root.querySelectorAll<HTMLElement>(
+    '[contenteditable="true"][role="textbox"], [contenteditable="true"]'
+  );
+  for (const el of editables) {
+    if (seen.has(el)) continue;
+    if (!isVisibleElement(el)) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.height < 60 || rect.width < 200) continue;
+    seen.add(el);
+
+    const questionText = getQuestionText(el, root);
+    if (!questionText) continue;
+
+    const isDataField = DATA_FIELD_PATTERNS.some((p) => p.test(questionText));
+    if (isDataField) continue;
+
+    const isQuestion = QUESTION_PATTERNS.some((p) => p.test(questionText));
+    if (!isQuestion && rect.height < 100) continue;
+
+    questions.push({
+      element: el,
+      questionText,
+      hasExistingAnswer: !!(el.innerText && el.innerText.trim().length > 10),
+    });
+  }
 }
 
 // ============ Label Extraction ============
 
-function getQuestionText(textarea: HTMLTextAreaElement): string {
+function getQuestionText(el: HTMLElement, root: Document | ShadowRoot): string {
   // Strategy 1: label[for]
-  if (textarea.id) {
-    const label = document.querySelector(`label[for="${CSS.escape(textarea.id)}"]`);
+  if (el.id) {
+    const label = root.querySelector(`label[for="${CSS.escape(el.id)}"]`);
     if (label?.textContent?.trim()) return label.textContent.trim();
   }
 
-  // Strategy 2: Wrapping label
-  const parentLabel = textarea.closest('label');
+  // Strategy 2: aria-labelledby
+  const ariaLabelledBy = el.getAttribute('aria-labelledby');
+  if (ariaLabelledBy) {
+    const refEl = document.getElementById(ariaLabelledBy);
+    if (refEl?.textContent?.trim()) return refEl.textContent.trim();
+  }
+
+  // Strategy 3: Wrapping label
+  const parentLabel = el.closest('label');
   if (parentLabel) {
     const clone = parentLabel.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('textarea').forEach((t) => t.remove());
+    clone.querySelectorAll('textarea, [contenteditable]').forEach((t) => t.remove());
     if (clone.textContent?.trim()) return clone.textContent.trim();
   }
 
-  // Strategy 3: Parent container heading/label
-  const container = textarea.closest(
+  // Strategy 4: Parent container heading/label
+  const container = el.closest(
     '[class*="question"], [class*="field"], [class*="form-group"], .question, .field-group, div'
   );
   if (container) {
     const headings = container.querySelectorAll(
-      'label, h1, h2, h3, h4, h5, h6, .question-text, [class*="question"], [class*="label"], p'
+      'label, h1, h2, h3, h4, h5, h6, .question-text, [class*="question"], [class*="label"], [class*="prompt"], p'
     );
     for (const heading of headings) {
-      if (heading.contains(textarea)) continue;
+      if (heading.contains(el)) continue;
       const text = heading.textContent?.trim();
       if (text && text.length > 10 && text.length < 500) return text;
     }
   }
 
-  // Strategy 4: aria-label or placeholder
-  const ariaLabel = textarea.getAttribute('aria-label');
+  // Strategy 5: aria-label or placeholder
+  const ariaLabel = el.getAttribute('aria-label');
   if (ariaLabel) return ariaLabel;
 
-  const placeholder = textarea.placeholder;
+  const placeholder = (el as HTMLTextAreaElement).placeholder || el.getAttribute('data-placeholder');
   if (placeholder && placeholder.length > 10) return placeholder;
 
   return '';
 }
 
-function findCharacterLimit(textarea: HTMLTextAreaElement): number | undefined {
-  // Look for character counter near the textarea
+function findCharacterLimit(textarea: HTMLElement): number | undefined {
   const parent = textarea.closest('div, fieldset, section');
   if (!parent) return undefined;
 
@@ -157,7 +213,10 @@ function findCharacterLimit(textarea: HTMLTextAreaElement): number | undefined {
 }
 
 function isVisibleElement(el: HTMLElement): boolean {
-  if (!el.offsetParent && el.style.position !== 'fixed') return false;
+  if (!el.offsetParent && el.style.position !== 'fixed') {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+  }
   const style = getComputedStyle(el);
   return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
 }

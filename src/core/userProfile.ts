@@ -18,6 +18,8 @@ export interface UserProfile {
   email: string;
   phone: string;
   location: string;
+  address: string;
+  zipCode: string;
   linkedinUrl: string;
   githubUrl: string;
   portfolioUrl: string;
@@ -26,6 +28,7 @@ export interface UserProfile {
   totalYearsExperience: number;
   currentRole: string;
   currentCompany: string;
+  noticePeriod: string;
 
   // Education
   education: UserEducation[];
@@ -37,6 +40,11 @@ export interface UserProfile {
   salaryExpectation: string;
   workAuthorization: string;
   coverLetterPreference: 'auto' | 'skip';
+
+  // Demographics (optional, for EEO forms)
+  gender: string;
+  nationality: string;
+  dateOfBirth: string;
 
   // Resume PDF (stored as base64)
   resumePdfBase64: string;
@@ -54,12 +62,15 @@ export const DEFAULT_PROFILE: UserProfile = {
   email: '',
   phone: '',
   location: '',
+  address: '',
+  zipCode: '',
   linkedinUrl: '',
   githubUrl: '',
   portfolioUrl: '',
   totalYearsExperience: 0,
   currentRole: '',
   currentCompany: '',
+  noticePeriod: '',
   education: [],
   topSkills: [],
   preferredJobTitles: [],
@@ -67,6 +78,9 @@ export const DEFAULT_PROFILE: UserProfile = {
   salaryExpectation: '',
   workAuthorization: '',
   coverLetterPreference: 'auto',
+  gender: '',
+  nationality: '',
+  dateOfBirth: '',
   resumePdfBase64: '',
   resumeFileName: '',
   onboardingComplete: false,
@@ -135,9 +149,11 @@ export function profileToFillData(profile: UserProfile): Record<string, string> 
     email: profile.email,
     phone: profile.phone,
     location: profile.location,
+    address: profile.address,
     city: profile.location.split(',')[0]?.trim() || profile.location,
     state: profile.location.split(',')[1]?.trim() || '',
     country: profile.location.split(',').pop()?.trim() || '',
+    zipCode: profile.zipCode,
     linkedinUrl: profile.linkedinUrl,
     githubUrl: profile.githubUrl,
     portfolioUrl: profile.portfolioUrl,
@@ -147,15 +163,21 @@ export function profileToFillData(profile: UserProfile): Record<string, string> 
     currentJobTitle: profile.currentRole,
     currentCompany: profile.currentCompany,
     currentEmployer: profile.currentCompany,
+    noticePeriod: profile.noticePeriod,
     degree: profile.education[0]?.degree || '',
     college: profile.education[0]?.college || '',
     university: profile.education[0]?.college || '',
     school: profile.education[0]?.college || '',
     graduationYear: profile.education[0]?.year || '',
+    fieldOfStudy: (profile.education[0] as any)?.fieldOfStudy || '',
+    gpa: (profile.education[0] as any)?.gpa || '',
     skills: profile.topSkills.join(', '),
     salaryExpectation: profile.salaryExpectation,
     workAuthorization: profile.workAuthorization,
     visaStatus: profile.workAuthorization,
+    gender: profile.gender,
+    nationality: profile.nationality,
+    dateOfBirth: profile.dateOfBirth,
   };
 }
 
